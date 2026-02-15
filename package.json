@@ -1,0 +1,24 @@
+{
+  "name": "a.g.e.n.c.i.a.",
+  "version": "3.1.0",
+  "description": "A.G.E.N.C.I.A. - MCP Server for Cognitive Memory",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "agencia-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "axios": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "tsx": "^4.19.0"
+  }
+}
