@@ -1,4 +1,4 @@
-# A.G.E.N.C.I.A. MCP Server
+# Frinus MCP Server
 
 MCP (Model Context Protocol) server that exposes the Agents Memory Service to Claude agents. This server provides 14 tools for memory management, knowledge graph operations, working memory, stream capture, and user authentication.
 
@@ -42,7 +42,7 @@ npm start
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MEMORY_SERVICE_URL` | `http://localhost:8001` | URL of the Memory Service API |
-| `AGENCIA_MEMORY_API_KEY` | **(required)** | Personal API key (sk-mem-...) for authentication |
+| `FRINUS_API_KEY` | **(required)** | Personal API key (sk-mem-...) for authentication |
 
 ### Claude Desktop Configuration
 
@@ -51,12 +51,12 @@ Add to your Claude Desktop config (`~/.config/claude/claude_desktop_config.json`
 ```json
 {
   "mcpServers": {
-    "a.g.e.n.c.i.a.": {
+    "frinus": {
       "command": "node",
       "args": ["/path/to/mcp/dist/index.js"],
       "env": {
         "MEMORY_SERVICE_URL": "http://localhost:8001",
-        "AGENCIA_MEMORY_API_KEY": "sk-mem-your-key-here"
+        "FRINUS_API_KEY": "sk-mem-your-key-here"
       }
     }
   }

@@ -1,11 +1,11 @@
 {
-  "name": "a.g.e.n.c.i.a.",
+  "name": "frinus",
   "version": "3.1.0",
-  "description": "A.G.E.N.C.I.A. - MCP Server for Cognitive Memory",
+  "description": "Frinus - MCP Server for Cognitive Memory",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "agencia-mcp": "dist/index.js"
+    "frinus-mcp": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
