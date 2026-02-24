@@ -87,7 +87,7 @@ export class MemoryClient implements MemoryClientInterface {
       agent_id: data.agent_id,
       content: data.content,
       memory_type: data.memory_type || "episodic",
-      scope: data.scope || "project",
+      scope: data.scope || "organization",
       importance: data.importance || 0.5,
       project_id: data.project_id,
       metadata: data.metadata,

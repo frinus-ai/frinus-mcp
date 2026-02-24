@@ -20,9 +20,10 @@ Memory types:
 - procedural: How to do things (step-by-step procedures)
 
 Scopes:
+- user: Private to the user
 - agent: Private to the agent
-- project: Shared within the project
-- global: Available to all agents`,
+- universe: Shared within the universe (department)
+- organization: Available to all agents in the organization`,
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -41,8 +42,8 @@ Scopes:
         },
         scope: {
           type: "string",
-          enum: ["agent", "project", "global", "user", "skill"],
-          description: "Visibility scope (default: project)",
+          enum: ["user", "agent", "universe", "organization"],
+          description: "Visibility scope: user (private), agent (agent-only), universe (department), organization (org-wide). Default: organization",
         },
         importance: {
           type: "number",
@@ -198,15 +199,15 @@ optionally filtered by type.`,
   // Working Memory Tools
   {
     name: "working_memory_get",
-    description: `Get working memory for a context (agent, project, or skill).
+    description: `Get working memory for a context (agent, universe, or organization).
 
 CRITICAL: Always call this at the START of any task to load current state.
 Working memory contains the agent's current role, responsibilities, and task state.
 
 Context ID formats:
 - agent:{uuid} - Agent's working memory
-- project:{uuid} - Project's working memory
-- skill:{uuid} - Skill's working memory`,
+- universe:{uuid} - Universe's working memory
+- organization:{uuid} - Organization's working memory`,
     inputSchema: {
       type: "object" as const,
       properties: {

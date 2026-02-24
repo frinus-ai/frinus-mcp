@@ -41,9 +41,65 @@ export class InteractionCapture implements InteractionCaptureInterface {
     return this.sessionId;
   }
 
+  /**
+   * Read-only tools whose CALL (input) side is not worth capturing.
+   * We still capture their results if meaningful.
+   */
+  private static readonly READ_ONLY_TOOLS = new Set([
+    "memory_search",
+    "memory_get",
+    "memory_list",
+    "working_memory_get",
+    "search_with_attention",
+    "memory_get_context",
+    "graph_get_agent",
+    "graph_get_project",
+    "get_session_context",
+    "get_session_summary",
+    "get_attention_profiles",
+    "get_hierarchy_stats",
+    "get_context_tree",
+    "get_context_stats",
+    "get_metacognition_report",
+    "get_sleep_report",
+    "get_sleep_config",
+    "get_trending_memories",
+  ]);
+
+  /** Trivial result strings that carry no learning value. */
+  private static readonly TRIVIAL_RESULTS = new Set([
+    "ok",
+    "success",
+    "done",
+    "true",
+    "false",
+    "null",
+    "{}",
+    "[]",
+  ]);
+
   /** Whether this tool call should be captured. */
   private shouldCapture(toolName: string): boolean {
     return !InteractionCapture.EXCLUDED_TOOLS.has(toolName);
+  }
+
+  /**
+   * Whether the INPUT side of a tool call should be captured.
+   * Read-only tools only get their results captured, not their inputs.
+   */
+  private shouldCaptureInput(toolName: string): boolean {
+    return !InteractionCapture.READ_ONLY_TOOLS.has(toolName);
+  }
+
+  /**
+   * Whether a tool result is too trivial to be worth capturing.
+   * Filters out very short results and known no-op strings.
+   */
+  private isNoiseResult(outputTexts: string): boolean {
+    const trimmed = outputTexts.trim();
+    if (trimmed.length < 20) return true;
+    if (InteractionCapture.TRIVIAL_RESULTS.has(trimmed.toLowerCase())) return true;
+    return false;
   }
 
   /** Truncate content to the max allowed length. */
@@ -65,6 +121,11 @@ export class InteractionCapture implements InteractionCaptureInterface {
   /**
    * Capture both the input (tool call) and output (tool result) of an
    * MCP tool invocation. Failures are silently ignored.
+   *
+   * Pre-filters applied:
+   * - Excluded tools are never captured (recursion guard).
+   * - Read-only tool CALLS (inputs) are skipped; only their results matter.
+   * - Trivial / very short results are skipped to reduce noise.
    */
   captureToolCall(
     toolName: string,
@@ -79,28 +140,34 @@ export class InteractionCapture implements InteractionCaptureInterface {
     if (projectId) metadata.project_id = projectId;
 
     // --- Capture INPUT (the tool call) ---
-    const inputContent = this.truncate(
-      `[MCP Tool Call] ${toolName}\n${JSON.stringify(args, null, 2)}`
-    );
+    // Skip input capture for read-only tools (only results are interesting)
+    if (this.shouldCaptureInput(toolName)) {
+      const inputContent = this.truncate(
+        `[MCP Tool Call] ${toolName}\n${JSON.stringify(args, null, 2)}`
+      );
 
-    this.client
-      .captureStream({
-        session_id: this.sessionId,
-        content: inputContent,
-        direction: "input",
-        agent_id: agentId,
-        importance: this.importanceFor(toolName, "input"),
-        metadata,
-      })
-      .catch(() => {
-        // Silently ignore capture failures
-      });
+      this.client
+        .captureStream({
+          session_id: this.sessionId,
+          content: inputContent,
+          direction: "input",
+          agent_id: agentId,
+          importance: this.importanceFor(toolName, "input"),
+          metadata,
+        })
+        .catch(() => {
+          // Silently ignore capture failures
+        });
+    }
 
     // --- Capture OUTPUT (the tool result) ---
     const outputTexts = result.content
       .filter((c) => c.type === "text")
       .map((c) => c.text)
       .join("\n");
+
+    // Skip trivial / noise results
+    if (this.isNoiseResult(outputTexts)) return;
 
     const outputContent = this.truncate(
       `[MCP Tool Result] ${toolName}${result.isError ? " (ERROR)" : ""}\n${outputTexts}`
