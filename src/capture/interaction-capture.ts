@@ -18,16 +18,10 @@ export class InteractionCapture implements InteractionCaptureInterface {
   /** Tools that should NOT be captured (to avoid recursion / noise). */
   private static readonly EXCLUDED_TOOLS = new Set([
     "stream_capture",
-    "stream_stats",
     "stream_process",
-    "stream_forget",
-    "stream_consolidate",
     "stream_get_session",
     "stream_get_recent",
     "heartbeat_tick",
-    "heartbeat_status",
-    "heartbeat_configure",
-    "heartbeat_reset",
   ]);
 
   constructor(client: MemoryClientInterface) {
@@ -52,18 +46,12 @@ export class InteractionCapture implements InteractionCaptureInterface {
     "working_memory_get",
     "search_with_attention",
     "memory_get_context",
-    "graph_get_agent",
-    "graph_get_project",
-    "get_session_context",
-    "get_session_summary",
-    "get_attention_profiles",
-    "get_hierarchy_stats",
-    "get_context_tree",
-    "get_context_stats",
-    "get_metacognition_report",
-    "get_sleep_report",
-    "get_sleep_config",
-    "get_trending_memories",
+    "session_context",
+    "session_summary",
+    "user_get_context",
+    "hierarchy_get_tree",
+    "consolidation_detect_conflicts",
+    "consolidation_detect_redundant",
   ]);
 
   /** Trivial result strings that carry no learning value. */
@@ -113,11 +101,6 @@ export class InteractionCapture implements InteractionCaptureInterface {
     return (args.agent_id as string) || undefined;
   }
 
-  /** Extract project_id from tool arguments when available. */
-  private extractProjectId(args: Record<string, unknown>): string | undefined {
-    return (args.project_id as string) || undefined;
-  }
-
   /**
    * Capture both the input (tool call) and output (tool result) of an
    * MCP tool invocation. Failures are silently ignored.
@@ -135,9 +118,7 @@ export class InteractionCapture implements InteractionCaptureInterface {
     if (!this.shouldCapture(toolName)) return;
 
     const agentId = this.extractAgentId(args);
-    const projectId = this.extractProjectId(args);
     const metadata: Record<string, unknown> = { tool_name: toolName };
-    if (projectId) metadata.project_id = projectId;
 
     // --- Capture INPUT (the tool call) ---
     // Skip input capture for read-only tools (only results are interesting)
@@ -195,17 +176,13 @@ export class InteractionCapture implements InteractionCaptureInterface {
     // Write / mutate operations are more important
     const highImportance = new Set([
       "memory_store",
+      "memory_delete",
       "working_memory_add",
-      "graph_register_agent",
-      "graph_register_project",
-      "graph_assign_agent_project",
-      "graph_register_skill",
-      "context_create",
       "session_start",
       "session_end",
       "sleep_run",
       "consolidation_resolve_conflict",
-      "consolidation_mark_obsolete",
+      "hierarchy_consolidate",
     ]);
 
     if (highImportance.has(toolName)) {
