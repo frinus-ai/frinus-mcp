@@ -28,12 +28,15 @@ import {
   setResolvedUserId,
   getResolvedTenantOrgId,
 } from "./client/memory-client.js";
+import { AgentClient } from "./client/agent-client.js";
+import { CpClient } from "./client/cp-client.js";
 import { InteractionCapture } from "./capture/interaction-capture.js";
 import { TOOLS } from "./tools/definitions.js";
 import { dispatchTool } from "./tools/handlers.js";
 
 const MEMORY_SERVICE_URL = process.env.MEMORY_SERVICE_URL || "http://localhost:8001";
 const CP_URL = process.env.FRINUS_CP_URL || "http://localhost:8000";
+const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || "http://localhost:8002";
 
 // Main server
 async function main() {
@@ -46,6 +49,8 @@ async function main() {
   }
 
   const memoryClient = new MemoryClient(MEMORY_SERVICE_URL, apiKey);
+  const agentClient = new AgentClient(AGENT_SERVICE_URL, apiKey);
+  const cpClient = new CpClient(CP_URL, apiKey);
   const capture = new InteractionCapture(memoryClient);
 
   console.error(`[InteractionCapture] Session: ${capture.getSessionId()}`);
@@ -97,6 +102,8 @@ async function main() {
     // Execute the tool via the dispatch map
     const toolResult = await dispatchTool(name, args as Record<string, unknown>, {
       memoryClient,
+      agentClient,
+      cpClient,
       capture,
       resolvedUserEmail: getResolvedUserEmail(),
       resolvedUserId: getResolvedUserId(),

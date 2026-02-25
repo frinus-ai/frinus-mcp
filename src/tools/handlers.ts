@@ -6,6 +6,7 @@
  */
 import axios from "axios";
 import type { ToolResult, ToolArgs, ToolHandlerDeps } from "../types/index.js";
+import { getResolvedTenantOrgId } from "../client/memory-client.js";
 
 // ---------------------------------------------------------------------------
 // Helper: 401/403 error handling
@@ -687,6 +688,523 @@ const handlers: Record<string, HandlerFn> = {
       formatted += 'No hierarchy relationships found.';
     }
     return { content: [{ type: "text", text: formatted }] };
+  },
+
+  // ==========================================================================
+  // Agent CRUD
+  // ==========================================================================
+
+  async agent_create(args, { agentClient }) {
+    const result = await agentClient.createAgent({
+      name: args.name as string,
+      template_id: args.template_id as string,
+      universe_id: args.universe_id as string,
+      persona: args.persona as Record<string, unknown>,
+      team_id: args.team_id as string,
+      is_team_lead: args.is_team_lead as boolean,
+    });
+    return {
+      content: [{
+        type: "text",
+        text: `Agent created.\nID: ${result.id}\nName: ${result.name}\nStatus: ${result.status || 'active'}`,
+      }],
+    };
+  },
+
+  async agent_list(args, { agentClient }) {
+    const results = await agentClient.listAgents(args.org_id as string);
+    const agents = Array.isArray(results) ? results : (results.agents || results.items || []);
+    if (!agents || agents.length === 0) {
+      return { content: [{ type: "text", text: "No agents found." }] };
+    }
+    let formatted = "Agents:\n\n";
+    agents.forEach((a: any, i: number) => {
+      formatted += `${i + 1}. ${a.name} (ID: ${a.id})\n`;
+      formatted += `   Status: ${a.status || 'active'} | Universe: ${a.universe_id || 'none'}\n\n`;
+    });
+    return { content: [{ type: "text", text: formatted }] };
+  },
+
+  async agent_get(args, { agentClient }) {
+    const result = await agentClient.getAgent(args.agent_id as string);
+    let formatted = `Agent Details:\n`;
+    formatted += `ID: ${result.id}\n`;
+    formatted += `Name: ${result.name}\n`;
+    formatted += `Status: ${result.status || 'active'}\n`;
+    formatted += `Universe: ${result.universe_id || 'none'}\n`;
+    formatted += `Team: ${result.team_id || 'none'}\n`;
+    formatted += `Team Lead: ${result.is_team_lead || false}\n`;
+    if (result.persona) {
+      formatted += `\nPersona:\n`;
+      if (result.persona.personality) formatted += `  Personality: ${result.persona.personality}\n`;
+      if (result.persona.instructions) formatted += `  Instructions: ${result.persona.instructions}\n`;
+      if (result.persona.greeting) formatted += `  Greeting: ${result.persona.greeting}\n`;
+      if (result.persona.language) formatted += `  Language: ${result.persona.language}\n`;
+      if (result.persona.specialization) formatted += `  Specialization: ${result.persona.specialization}\n`;
+      if (result.persona.forbidden_topics && result.persona.forbidden_topics.length > 0) {
+        formatted += `  Forbidden Topics: ${result.persona.forbidden_topics.join(', ')}\n`;
+      }
+    }
+    if (result.created_at) formatted += `\nCreated: ${result.created_at}`;
+    return { content: [{ type: "text", text: formatted }] };
+  },
+
+  async agent_update(args, { agentClient }) {
+    const data: Record<string, unknown> = {};
+    if (args.name !== undefined) data.name = args.name as string;
+    if (args.personality !== undefined) data.personality = args.personality as string;
+    if (args.instructions !== undefined) data.instructions = args.instructions as string;
+    if (args.greeting !== undefined) data.greeting = args.greeting as string;
+    if (args.forbidden_topics !== undefined) data.forbidden_topics = args.forbidden_topics as string[];
+    if (args.language !== undefined) data.language = args.language as string;
+    if (args.specialization !== undefined) data.specialization = args.specialization as string;
+
+    const result = await agentClient.updateAgentPersona(args.agent_id as string, data as any);
+    return {
+      content: [{
+        type: "text",
+        text: `Agent updated.\nID: ${args.agent_id}\nName: ${result.name || 'unchanged'}`,
+      }],
+    };
+  },
+
+  async agent_delete(args, { agentClient }) {
+    await agentClient.deleteAgent(args.agent_id as string);
+    return {
+      content: [{
+        type: "text",
+        text: `Agent deleted.\nID: ${args.agent_id}`,
+      }],
+    };
+  },
+
+  // ==========================================================================
+  // Universe CRUD
+  // ==========================================================================
+
+  async universe_create(args, { cpClient }) {
+    const orgId = getResolvedTenantOrgId();
+    if (!orgId) {
+      return {
+        content: [{ type: "text", text: "Error: No organization context. API key may not be linked to an org." }],
+        isError: true,
+      };
+    }
+    const result = await cpClient.createUniverse(orgId, {
+      name: args.name as string,
+      slug: args.slug as string,
+      description: args.description as string,
+    });
+    return {
+      content: [{
+        type: "text",
+        text: `Universe created.\nID: ${result.id}\nName: ${result.name}\nSlug: ${result.slug}`,
+      }],
+    };
+  },
+
+  async universe_list(_args, { cpClient }) {
+    const orgId = getResolvedTenantOrgId();
+    if (!orgId) {
+      return {
+        content: [{ type: "text", text: "Error: No organization context. API key may not be linked to an org." }],
+        isError: true,
+      };
+    }
+    const results = await cpClient.listUniverses(orgId);
+    const universes = Array.isArray(results) ? results : (results.universes || results.items || []);
+    if (!universes || universes.length === 0) {
+      return { content: [{ type: "text", text: "No universes found." }] };
+    }
+    let formatted = "Universes:\n\n";
+    universes.forEach((u: any, i: number) => {
+      formatted += `${i + 1}. ${u.name} (ID: ${u.id})\n`;
+      formatted += `   Slug: ${u.slug}`;
+      if (u.description) formatted += ` | ${u.description}`;
+      formatted += `\n\n`;
+    });
+    return { content: [{ type: "text", text: formatted }] };
+  },
+
+  async universe_update(args, { cpClient }) {
+    const orgId = getResolvedTenantOrgId();
+    if (!orgId) {
+      return {
+        content: [{ type: "text", text: "Error: No organization context. API key may not be linked to an org." }],
+        isError: true,
+      };
+    }
+    const data: Record<string, unknown> = {};
+    if (args.name !== undefined) data.name = args.name as string;
+    if (args.description !== undefined) data.description = args.description as string;
+
+    const result = await cpClient.updateUniverse(orgId, args.universe_id as string, data as any);
+    return {
+      content: [{
+        type: "text",
+        text: `Universe updated.\nID: ${args.universe_id}\nName: ${result.name || 'unchanged'}`,
+      }],
+    };
+  },
+
+  // ==========================================================================
+  // Knowledge Graph - Concepts
+  // ==========================================================================
+
+  async concept_create(args, { memoryClient }) {
+    const result = await memoryClient.createConcept({
+      name: args.name as string,
+      universe_id: args.universe_id as string,
+      description: args.description as string,
+    });
+    return {
+      content: [{
+        type: "text",
+        text: `Concept created.\nID: ${result.id}\nName: ${result.name}\nUniverse: ${result.universe_id}`,
+      }],
+    };
+  },
+
+  async concept_list(args, { memoryClient }) {
+    const results = await memoryClient.listUniverseConcepts(args.universe_id as string);
+    const concepts = Array.isArray(results) ? results : (results.concepts || results.items || []);
+    if (!concepts || concepts.length === 0) {
+      return { content: [{ type: "text", text: "No concepts found for this universe." }] };
+    }
+    let formatted = "Concepts:\n\n";
+    concepts.forEach((c: any, i: number) => {
+      formatted += `${i + 1}. ${c.name} (ID: ${c.id})\n`;
+      if (c.description) formatted += `   ${c.description}\n`;
+      formatted += `\n`;
+    });
+    return { content: [{ type: "text", text: formatted }] };
+  },
+
+  async concept_update(args, { memoryClient }) {
+    const data: Record<string, unknown> = {};
+    if (args.name !== undefined) data.name = args.name as string;
+    if (args.description !== undefined) data.description = args.description as string;
+
+    const result = await memoryClient.updateConcept(args.concept_id as string, data as any);
+    return {
+      content: [{
+        type: "text",
+        text: `Concept updated.\nID: ${args.concept_id}\nName: ${result.name || 'unchanged'}`,
+      }],
+    };
+  },
+
+  async concept_delete(args, { memoryClient }) {
+    await memoryClient.deleteConcept(args.concept_id as string);
+    return {
+      content: [{
+        type: "text",
+        text: `Concept deleted (cascade: themes, topics, points).\nID: ${args.concept_id}`,
+      }],
+    };
+  },
+
+  // ==========================================================================
+  // Knowledge Graph - Themes
+  // ==========================================================================
+
+  async theme_create(args, { memoryClient }) {
+    const result = await memoryClient.createTheme({
+      name: args.name as string,
+      concept_id: args.concept_id as string,
+      description: args.description as string,
+    });
+    return {
+      content: [{
+        type: "text",
+        text: `Theme created.\nID: ${result.id}\nName: ${result.name}\nConcept: ${result.concept_id}`,
+      }],
+    };
+  },
+
+  async theme_list(args, { memoryClient }) {
+    const results = await memoryClient.listConceptThemes(args.concept_id as string);
+    const themes = Array.isArray(results) ? results : (results.themes || results.items || []);
+    if (!themes || themes.length === 0) {
+      return { content: [{ type: "text", text: "No themes found for this concept." }] };
+    }
+    let formatted = "Themes:\n\n";
+    themes.forEach((t: any, i: number) => {
+      formatted += `${i + 1}. ${t.name} (ID: ${t.id})\n`;
+      if (t.description) formatted += `   ${t.description}\n`;
+      formatted += `\n`;
+    });
+    return { content: [{ type: "text", text: formatted }] };
+  },
+
+  async theme_update(args, { memoryClient }) {
+    const data: Record<string, unknown> = {};
+    if (args.name !== undefined) data.name = args.name as string;
+    if (args.description !== undefined) data.description = args.description as string;
+
+    const result = await memoryClient.updateTheme(args.theme_id as string, data as any);
+    return {
+      content: [{
+        type: "text",
+        text: `Theme updated.\nID: ${args.theme_id}\nName: ${result.name || 'unchanged'}`,
+      }],
+    };
+  },
+
+  async theme_delete(args, { memoryClient }) {
+    await memoryClient.deleteTheme(args.theme_id as string);
+    return {
+      content: [{
+        type: "text",
+        text: `Theme deleted (cascade: topics, points).\nID: ${args.theme_id}`,
+      }],
+    };
+  },
+
+  // ==========================================================================
+  // Knowledge Graph - Topics
+  // ==========================================================================
+
+  async topic_create(args, { memoryClient }) {
+    const result = await memoryClient.createTopic({
+      name: args.name as string,
+      theme_id: args.theme_id as string,
+      description: args.description as string,
+      status: args.status as string,
+    });
+    return {
+      content: [{
+        type: "text",
+        text: `Topic created.\nID: ${result.id}\nName: ${result.name}\nTheme: ${result.theme_id}\nStatus: ${result.status || 'pending'}`,
+      }],
+    };
+  },
+
+  async topic_list(args, { memoryClient }) {
+    const results = await memoryClient.listThemeTopics(args.theme_id as string);
+    const topics = Array.isArray(results) ? results : (results.topics || results.items || []);
+    if (!topics || topics.length === 0) {
+      return { content: [{ type: "text", text: "No topics found for this theme." }] };
+    }
+    let formatted = "Topics:\n\n";
+    topics.forEach((t: any, i: number) => {
+      formatted += `${i + 1}. ${t.name} (ID: ${t.id})\n`;
+      formatted += `   Status: ${t.status || 'pending'}`;
+      if (t.description) formatted += ` | ${t.description}`;
+      formatted += `\n\n`;
+    });
+    return { content: [{ type: "text", text: formatted }] };
+  },
+
+  async topic_update(args, { memoryClient }) {
+    const hasMetadata = args.name !== undefined || args.description !== undefined;
+    const hasStatus = args.status !== undefined;
+
+    let result: any;
+
+    if (hasMetadata) {
+      const data: Record<string, unknown> = {};
+      if (args.name !== undefined) data.name = args.name as string;
+      if (args.description !== undefined) data.description = args.description as string;
+      result = await memoryClient.updateTopic(args.topic_id as string, data as any);
+    }
+
+    if (hasStatus) {
+      result = await memoryClient.updateTopicStatus(args.topic_id as string, args.status as string);
+    }
+
+    return {
+      content: [{
+        type: "text",
+        text: `Topic updated.\nID: ${args.topic_id}\nName: ${result?.name || 'unchanged'}\nStatus: ${result?.status || args.status || 'unchanged'}`,
+      }],
+    };
+  },
+
+  async topic_delete(args, { memoryClient }) {
+    await memoryClient.deleteTopic(args.topic_id as string);
+    return {
+      content: [{
+        type: "text",
+        text: `Topic deleted (cascade: points).\nID: ${args.topic_id}`,
+      }],
+    };
+  },
+
+  // ==========================================================================
+  // Knowledge Graph - Points
+  // ==========================================================================
+
+  async point_create(args, { memoryClient }) {
+    const result = await memoryClient.createPoint({
+      name: args.name as string,
+      topic_id: args.topic_id as string,
+      description: args.description as string,
+      status: args.status as string,
+    });
+    return {
+      content: [{
+        type: "text",
+        text: `Point created.\nID: ${result.id}\nName: ${result.name}\nTopic: ${result.topic_id}\nStatus: ${result.status || 'pending'}`,
+      }],
+    };
+  },
+
+  async point_list(args, { memoryClient }) {
+    const results = await memoryClient.listTopicPoints(args.topic_id as string);
+    const points = Array.isArray(results) ? results : (results.points || results.items || []);
+    if (!points || points.length === 0) {
+      return { content: [{ type: "text", text: "No points found for this topic." }] };
+    }
+    let formatted = "Points:\n\n";
+    points.forEach((p: any, i: number) => {
+      formatted += `${i + 1}. ${p.name} (ID: ${p.id})\n`;
+      formatted += `   Status: ${p.status || 'pending'}`;
+      if (p.description) formatted += ` | ${p.description}`;
+      formatted += `\n\n`;
+    });
+    return { content: [{ type: "text", text: formatted }] };
+  },
+
+  async point_update(args, { memoryClient }) {
+    const hasMetadata = args.name !== undefined || args.description !== undefined || args.content !== undefined;
+    const hasStatus = args.status !== undefined;
+
+    let result: any;
+
+    if (hasMetadata) {
+      const data: Record<string, unknown> = {};
+      if (args.name !== undefined) data.name = args.name as string;
+      if (args.description !== undefined) data.description = args.description as string;
+      if (args.content !== undefined) data.content = args.content as string;
+      result = await memoryClient.updatePoint(args.point_id as string, data as any);
+    }
+
+    if (hasStatus) {
+      result = await memoryClient.updatePointStatus(args.point_id as string, args.status as string);
+    }
+
+    return {
+      content: [{
+        type: "text",
+        text: `Point updated.\nID: ${args.point_id}\nName: ${result?.name || 'unchanged'}\nStatus: ${result?.status || args.status || 'unchanged'}`,
+      }],
+    };
+  },
+
+  async point_delete(args, { memoryClient }) {
+    await memoryClient.deletePoint(args.point_id as string);
+    return {
+      content: [{
+        type: "text",
+        text: `Point deleted.\nID: ${args.point_id}`,
+      }],
+    };
+  },
+
+  // ==========================================================================
+  // Knowledge Hierarchy
+  // ==========================================================================
+
+  async universe_hierarchy(args, { memoryClient }) {
+    const result = await memoryClient.getUniverseHierarchy(args.universe_id as string);
+
+    let formatted = `Knowledge Hierarchy for Universe: ${args.universe_id}\n`;
+    formatted += `${"=".repeat(50)}\n\n`;
+
+    const concepts = Array.isArray(result) ? result : (result.concepts || result.hierarchy || []);
+    if (!concepts || concepts.length === 0) {
+      formatted += "No knowledge hierarchy found for this universe.";
+      return { content: [{ type: "text", text: formatted }] };
+    }
+
+    concepts.forEach((concept: any, ci: number) => {
+      formatted += `[L0] ${ci + 1}. ${concept.name} (ID: ${concept.id})\n`;
+      if (concept.description) formatted += `     ${concept.description}\n`;
+
+      const themes = concept.themes || [];
+      themes.forEach((theme: any, ti: number) => {
+        formatted += `  [L1] ${ci + 1}.${ti + 1}. ${theme.name} (ID: ${theme.id})\n`;
+        if (theme.description) formatted += `       ${theme.description}\n`;
+
+        const topics = theme.topics || [];
+        topics.forEach((topic: any, toi: number) => {
+          const statusIcon = topic.status === 'completed' ? '[x]' : topic.status === 'in_progress' ? '[~]' : '[ ]';
+          formatted += `    [L2] ${statusIcon} ${ci + 1}.${ti + 1}.${toi + 1}. ${topic.name} (ID: ${topic.id})\n`;
+
+          const points = topic.points || [];
+          points.forEach((point: any, pi: number) => {
+            const pIcon = point.status === 'completed' ? '[x]' : '[ ]';
+            formatted += `      [L3] ${pIcon} ${ci + 1}.${ti + 1}.${toi + 1}.${pi + 1}. ${point.name} (ID: ${point.id})\n`;
+          });
+        });
+      });
+      formatted += `\n`;
+    });
+
+    return { content: [{ type: "text", text: formatted }] };
+  },
+
+  // ==========================================================================
+  // Training
+  // ==========================================================================
+
+  async training_teach(args, { memoryClient }) {
+    const result = await memoryClient.trainingTeach({
+      content: args.content as string,
+      type: args.type as string | undefined,
+      importance: args.importance as number | undefined,
+      universe_id: args.universe_id as string | undefined,
+    });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  },
+
+  async training_qa(args, { memoryClient }) {
+    const result = await memoryClient.trainingQa({
+      pairs: args.pairs as Array<{question: string; answer: string}>,
+      importance: args.importance as number | undefined,
+      universe_id: args.universe_id as string | undefined,
+    });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  },
+
+  async training_upload(args, { memoryClient }) {
+    const result = await memoryClient.trainingUpload({
+      file_path: args.file_path as string,
+      filename: args.filename as string || "",
+      universe_id: args.universe_id as string | undefined,
+      importance: args.importance as number | undefined,
+    });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  },
+
+  async training_stats(_args, { memoryClient }) {
+    const result = await memoryClient.trainingStats();
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  },
+
+  async training_gaps(_args, { memoryClient }) {
+    const result = await memoryClient.trainingGaps();
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  },
+
+  async training_recent(args, { memoryClient }) {
+    const result = await memoryClient.trainingRecent({
+      limit: args.limit as number | undefined,
+    });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
   },
 };
 

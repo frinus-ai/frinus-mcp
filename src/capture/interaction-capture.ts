@@ -52,6 +52,14 @@ export class InteractionCapture implements InteractionCaptureInterface {
     "hierarchy_get_tree",
     "consolidation_detect_conflicts",
     "consolidation_detect_redundant",
+    "agent_list",
+    "agent_get",
+    "universe_list",
+    "concept_list",
+    "theme_list",
+    "topic_list",
+    "point_list",
+    "universe_hierarchy",
   ]);
 
   /** Trivial result strings that carry no learning value. */
@@ -183,6 +191,23 @@ export class InteractionCapture implements InteractionCaptureInterface {
       "sleep_run",
       "consolidation_resolve_conflict",
       "hierarchy_consolidate",
+      "agent_create",
+      "agent_delete",
+      "agent_update",
+      "universe_create",
+      "universe_update",
+      "concept_create",
+      "concept_delete",
+      "concept_update",
+      "theme_create",
+      "theme_delete",
+      "theme_update",
+      "topic_create",
+      "topic_delete",
+      "topic_update",
+      "point_create",
+      "point_delete",
+      "point_update",
     ]);
 
     if (highImportance.has(toolName)) {

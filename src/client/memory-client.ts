@@ -350,4 +350,195 @@ export class MemoryClient implements MemoryClientInterface {
     const response = await this.client.get(`/hierarchy/${memoryId}/tree`);
     return response.data;
   }
+
+  // =========================================================================
+  // Knowledge Graph - Concepts
+  // =========================================================================
+
+  async createConcept(data: { name: string; universe_id: string; description?: string }) {
+    const response = await this.client.post("/graph/concepts", data);
+    return response.data;
+  }
+
+  async listUniverseConcepts(universeId: string) {
+    const response = await this.client.get(`/graph/universes/${universeId}/concepts`);
+    return response.data;
+  }
+
+  async updateConcept(conceptId: string, data: { name?: string; description?: string }) {
+    const response = await this.client.put(`/graph/concepts/${conceptId}`, data);
+    return response.data;
+  }
+
+  async deleteConcept(conceptId: string) {
+    const response = await this.client.delete(`/graph/concepts/${conceptId}`);
+    if (response.status === 204) {
+      return { deleted: true };
+    }
+    return response.data;
+  }
+
+  // =========================================================================
+  // Knowledge Graph - Themes
+  // =========================================================================
+
+  async createTheme(data: { name: string; concept_id: string; description?: string }) {
+    const response = await this.client.post("/graph/themes", data);
+    return response.data;
+  }
+
+  async listConceptThemes(conceptId: string) {
+    const response = await this.client.get(`/graph/concepts/${conceptId}/themes`);
+    return response.data;
+  }
+
+  async updateTheme(themeId: string, data: { name?: string; description?: string }) {
+    const response = await this.client.put(`/graph/themes/${themeId}`, data);
+    return response.data;
+  }
+
+  async deleteTheme(themeId: string) {
+    const response = await this.client.delete(`/graph/themes/${themeId}`);
+    if (response.status === 204) {
+      return { deleted: true };
+    }
+    return response.data;
+  }
+
+  // =========================================================================
+  // Knowledge Graph - Topics
+  // =========================================================================
+
+  async createTopic(data: { name: string; theme_id: string; description?: string; status?: string }) {
+    const response = await this.client.post("/graph/topics", data);
+    return response.data;
+  }
+
+  async listThemeTopics(themeId: string) {
+    const response = await this.client.get(`/graph/themes/${themeId}/topics`);
+    return response.data;
+  }
+
+  async updateTopic(topicId: string, data: { name?: string; description?: string }) {
+    const response = await this.client.put(`/graph/topics/${topicId}`, data);
+    return response.data;
+  }
+
+  async updateTopicStatus(topicId: string, status: string) {
+    const response = await this.client.patch(`/graph/topics/${topicId}/status`, { status });
+    return response.data;
+  }
+
+  async deleteTopic(topicId: string) {
+    const response = await this.client.delete(`/graph/topics/${topicId}`);
+    if (response.status === 204) {
+      return { deleted: true };
+    }
+    return response.data;
+  }
+
+  // =========================================================================
+  // Knowledge Graph - Points
+  // =========================================================================
+
+  async createPoint(data: { name: string; topic_id: string; description?: string; status?: string }) {
+    const response = await this.client.post("/graph/points", data);
+    return response.data;
+  }
+
+  async listTopicPoints(topicId: string) {
+    const response = await this.client.get(`/graph/topics/${topicId}/points`);
+    return response.data;
+  }
+
+  async updatePoint(pointId: string, data: { name?: string; description?: string; content?: string }) {
+    const response = await this.client.put(`/graph/points/${pointId}`, data);
+    return response.data;
+  }
+
+  async updatePointStatus(pointId: string, status: string) {
+    const response = await this.client.patch(`/graph/points/${pointId}/status`, { status });
+    return response.data;
+  }
+
+  async deletePoint(pointId: string) {
+    const response = await this.client.delete(`/graph/points/${pointId}`);
+    if (response.status === 204) {
+      return { deleted: true };
+    }
+    return response.data;
+  }
+
+  // =========================================================================
+  // Knowledge Graph - Hierarchy
+  // =========================================================================
+
+  async getUniverseHierarchy(universeId: string) {
+    const response = await this.client.get(`/graph/universes/${universeId}/hierarchy`);
+    return response.data;
+  }
+
+  // =========================================================================
+  // Training
+  // =========================================================================
+
+  async trainingTeach(data: { content: string; type?: string; importance?: number; universe_id?: string }) {
+    const response = await this.client.post("/training/teach", {
+      content: data.content,
+      type: data.type || "semantic",
+      importance: data.importance || 0.7,
+      universe_id: data.universe_id,
+    });
+    return response.data;
+  }
+
+  async trainingQa(data: { pairs: Array<{question: string; answer: string}>; importance?: number; universe_id?: string }) {
+    const response = await this.client.post("/training/qa", {
+      pairs: data.pairs,
+      universe_id: data.universe_id,
+    });
+    return response.data;
+  }
+
+  async trainingUpload(data: { file_path: string; filename: string; universe_id?: string; importance?: number }) {
+    const fs = await import("fs");
+    const path = await import("path");
+
+    const filePath = data.file_path;
+    const filename = data.filename || path.default.basename(filePath);
+
+    // Use Node.js native FormData (available since Node 18)
+    const fileBuffer = fs.readFileSync(filePath);
+    const blob = new Blob([fileBuffer]);
+
+    const formData = new FormData();
+    formData.append("file", blob, filename);
+    if (data.universe_id) {
+      formData.append("universe_id", data.universe_id);
+    }
+    if (data.importance !== undefined) {
+      formData.append("importance", data.importance.toString());
+    }
+
+    const response = await this.client.post("/training/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  }
+
+  async trainingStats() {
+    const response = await this.client.get("/training/stats");
+    return response.data;
+  }
+
+  async trainingGaps() {
+    const response = await this.client.get("/training/gaps");
+    return response.data;
+  }
+
+  async trainingRecent(data?: { limit?: number }) {
+    const params = data?.limit ? `?limit=${data.limit}` : "";
+    const response = await this.client.get(`/training/recent${params}`);
+    return response.data;
+  }
 }

@@ -670,4 +670,556 @@ Returns the memory and all its related memories in the hierarchy:
       required: ["memory_id"],
     },
   },
+  // ==========================================================================
+  // Agent CRUD (5)
+  // ==========================================================================
+  {
+    name: "agent_create",
+    description: `Create a new agent in the organization.
+
+An agent is an AI entity with a persona, optional universe membership,
+and optional team assignment.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Name of the agent (required)" },
+        template_id: { type: "string", description: "Optional template ID to base the agent on" },
+        universe_id: { type: "string", description: "Optional universe ID to assign the agent to" },
+        persona: { type: "object", description: "Optional persona configuration (personality, instructions, greeting, etc.)" },
+        team_id: { type: "string", description: "Optional team ID to assign the agent to" },
+        is_team_lead: { type: "boolean", description: "Whether this agent is a team lead (default: false)" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "agent_list",
+    description: `List all agents in the organization.
+
+Returns agent name, ID, status, and universe assignment.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        org_id: { type: "string", description: "Optional organization ID filter" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "agent_get",
+    description: `Get detailed information about a specific agent.
+
+Returns full agent data including persona, status, and configuration.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_id: { type: "string", description: "UUID of the agent to retrieve" },
+      },
+      required: ["agent_id"],
+    },
+  },
+  {
+    name: "agent_update",
+    description: `Update an agent's persona and configuration.
+
+Allows updating personality, instructions, greeting, forbidden topics,
+language, specialization, and name.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_id: { type: "string", description: "UUID of the agent to update" },
+        name: { type: "string", description: "New agent name" },
+        personality: { type: "string", description: "Agent personality description" },
+        instructions: { type: "string", description: "Agent system instructions" },
+        greeting: { type: "string", description: "Agent greeting message" },
+        forbidden_topics: {
+          type: "array",
+          items: { type: "string" },
+          description: "List of topics the agent should not discuss",
+        },
+        language: { type: "string", description: "Agent's primary language (e.g., 'pt-BR', 'en')" },
+        specialization: { type: "string", description: "Agent's area of specialization" },
+      },
+      required: ["agent_id"],
+    },
+  },
+  {
+    name: "agent_delete",
+    description: `Delete an agent permanently.
+
+Use with caution - this removes the agent and its configuration.
+Memories created by the agent are NOT deleted.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_id: { type: "string", description: "UUID of the agent to delete" },
+      },
+      required: ["agent_id"],
+    },
+  },
+  // ==========================================================================
+  // Universe CRUD (3)
+  // ==========================================================================
+  {
+    name: "universe_create",
+    description: `Create a universe within the organization.
+
+A universe is an isolated knowledge domain (e.g., Security, Operations).
+Agents can be assigned to universes for scoped memory access.
+The org_id is auto-resolved from your API key.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Universe display name" },
+        slug: { type: "string", description: "Universe slug (lowercase, alphanumeric, hyphens)" },
+        description: { type: "string", description: "Optional description of the universe" },
+      },
+      required: ["name", "slug"],
+    },
+  },
+  {
+    name: "universe_list",
+    description: `List all universes in the organization.
+
+Returns universe name, slug, ID, and description.
+The org_id is auto-resolved from your API key.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "universe_update",
+    description: `Update a universe's name or description.
+
+The org_id is auto-resolved from your API key.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        universe_id: { type: "string", description: "UUID of the universe to update" },
+        name: { type: "string", description: "New universe name" },
+        description: { type: "string", description: "New universe description" },
+      },
+      required: ["universe_id"],
+    },
+  },
+  // ==========================================================================
+  // Knowledge Graph - Concepts (4)
+  // ==========================================================================
+  {
+    name: "concept_create",
+    description: `Create a concept within a universe (L0 - knowledge body).
+
+A concept is the top-level node in the knowledge hierarchy:
+Concept > Theme > Topic > Point.
+
+Each concept belongs to a universe and represents a major knowledge domain.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Concept name" },
+        universe_id: { type: "string", description: "UUID of the universe this concept belongs to" },
+        description: { type: "string", description: "Optional description" },
+      },
+      required: ["name", "universe_id"],
+    },
+  },
+  {
+    name: "concept_list",
+    description: `List all concepts for a universe.
+
+Returns the L0 nodes of the knowledge hierarchy within a universe.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        universe_id: { type: "string", description: "UUID of the universe" },
+      },
+      required: ["universe_id"],
+    },
+  },
+  {
+    name: "concept_update",
+    description: `Update a concept's name or description.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        concept_id: { type: "string", description: "UUID of the concept to update" },
+        name: { type: "string", description: "New concept name" },
+        description: { type: "string", description: "New concept description" },
+      },
+      required: ["concept_id"],
+    },
+  },
+  {
+    name: "concept_delete",
+    description: `Delete a concept and all its children (themes, topics, points).
+
+Use with caution - this cascades to all child nodes.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        concept_id: { type: "string", description: "UUID of the concept to delete" },
+      },
+      required: ["concept_id"],
+    },
+  },
+  // ==========================================================================
+  // Knowledge Graph - Themes (4)
+  // ==========================================================================
+  {
+    name: "theme_create",
+    description: `Create a theme within a concept (L1 - thematic division).
+
+A theme groups related topics under a concept:
+Concept > Theme > Topic > Point.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Theme name" },
+        concept_id: { type: "string", description: "UUID of the parent concept" },
+        description: { type: "string", description: "Optional description" },
+      },
+      required: ["name", "concept_id"],
+    },
+  },
+  {
+    name: "theme_list",
+    description: `List all themes for a concept.
+
+Returns the L1 nodes under a specific concept.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        concept_id: { type: "string", description: "UUID of the parent concept" },
+      },
+      required: ["concept_id"],
+    },
+  },
+  {
+    name: "theme_update",
+    description: `Update a theme's name or description.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        theme_id: { type: "string", description: "UUID of the theme to update" },
+        name: { type: "string", description: "New theme name" },
+        description: { type: "string", description: "New theme description" },
+      },
+      required: ["theme_id"],
+    },
+  },
+  {
+    name: "theme_delete",
+    description: `Delete a theme and all its children (topics, points).
+
+Use with caution - this cascades to all child nodes.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        theme_id: { type: "string", description: "UUID of the theme to delete" },
+      },
+      required: ["theme_id"],
+    },
+  },
+  // ==========================================================================
+  // Knowledge Graph - Topics (4)
+  // ==========================================================================
+  {
+    name: "topic_create",
+    description: `Create a topic within a theme (L2 - work unit).
+
+A topic is a specific subject area that can be tracked:
+Concept > Theme > Topic > Point.
+
+Status: pending | in_progress | completed.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Topic name" },
+        theme_id: { type: "string", description: "UUID of the parent theme" },
+        description: { type: "string", description: "Optional description" },
+        status: {
+          type: "string",
+          enum: ["pending", "in_progress", "completed"],
+          description: "Topic status (default: pending)",
+        },
+      },
+      required: ["name", "theme_id"],
+    },
+  },
+  {
+    name: "topic_list",
+    description: `List all topics for a theme.
+
+Returns the L2 nodes under a specific theme with their status.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        theme_id: { type: "string", description: "UUID of the parent theme" },
+      },
+      required: ["theme_id"],
+    },
+  },
+  {
+    name: "topic_update",
+    description: `Update a topic's name, description, or status.
+
+When status is provided alongside other fields, both the metadata
+and status are updated. Status: pending | in_progress | completed.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        topic_id: { type: "string", description: "UUID of the topic to update" },
+        name: { type: "string", description: "New topic name" },
+        description: { type: "string", description: "New topic description" },
+        status: {
+          type: "string",
+          enum: ["pending", "in_progress", "completed"],
+          description: "New topic status",
+        },
+      },
+      required: ["topic_id"],
+    },
+  },
+  {
+    name: "topic_delete",
+    description: `Delete a topic and all its children (points).
+
+Use with caution - this cascades to all child points.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        topic_id: { type: "string", description: "UUID of the topic to delete" },
+      },
+      required: ["topic_id"],
+    },
+  },
+  // ==========================================================================
+  // Knowledge Graph - Points (4)
+  // ==========================================================================
+  {
+    name: "point_create",
+    description: `Create a point within a topic (L3 - atomic knowledge unit).
+
+A point is the leaf node in the knowledge hierarchy:
+Concept > Theme > Topic > Point.
+
+Points represent individual facts, procedures, or learnings.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Point name" },
+        topic_id: { type: "string", description: "UUID of the parent topic" },
+        description: { type: "string", description: "Optional short description" },
+        status: { type: "string", description: "Optional status (e.g., pending, completed)" },
+      },
+      required: ["name", "topic_id"],
+    },
+  },
+  {
+    name: "point_list",
+    description: `List all points for a topic.
+
+Returns the L3 leaf nodes under a specific topic.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        topic_id: { type: "string", description: "UUID of the parent topic" },
+      },
+      required: ["topic_id"],
+    },
+  },
+  {
+    name: "point_update",
+    description: `Update a point's name, description, content, or status.
+
+When status is provided alongside other fields, both the metadata
+and status are updated.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        point_id: { type: "string", description: "UUID of the point to update" },
+        name: { type: "string", description: "New point name" },
+        description: { type: "string", description: "New point description" },
+        content: { type: "string", description: "New point content (detailed knowledge)" },
+        status: { type: "string", description: "New point status" },
+      },
+      required: ["point_id"],
+    },
+  },
+  {
+    name: "point_delete",
+    description: `Delete a point permanently.
+
+This removes the leaf node from the knowledge hierarchy.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        point_id: { type: "string", description: "UUID of the point to delete" },
+      },
+      required: ["point_id"],
+    },
+  },
+  // ==========================================================================
+  // Knowledge Hierarchy (1)
+  // ==========================================================================
+  {
+    name: "universe_hierarchy",
+    description: `Get the full knowledge hierarchy tree for a universe.
+
+Returns a tree structure: Concepts > Themes > Topics > Points.
+Useful for understanding the complete knowledge structure of a universe.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        universe_id: { type: "string", description: "UUID of the universe" },
+      },
+      required: ["universe_id"],
+    },
+  },
+  // ==========================================================================
+  // Training (6)
+  // ==========================================================================
+  {
+    name: "training_teach",
+    description: `Teach a fact or procedure to the memory system.
+
+Use this to directly teach the system new knowledge.
+Creates a permanent memory of the specified type.
+
+Types:
+- semantic: Facts, knowledge, definitions
+- procedural: How-to, step-by-step instructions`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        content: {
+          type: "string",
+          description: "The fact or procedure to teach (min 10 chars)",
+        },
+        type: {
+          type: "string",
+          enum: ["semantic", "procedural"],
+          description: "Memory type (default: semantic)",
+        },
+        importance: {
+          type: "number",
+          description: "Importance score 0-1 (default: 0.7)",
+        },
+        universe_id: {
+          type: "string",
+          description: "Optional universe UUID for scoped access",
+        },
+      },
+      required: ["content"],
+    },
+  },
+  {
+    name: "training_qa",
+    description: `Train with question-answer pairs.
+
+Provide Q&A pairs to improve FAQ-style responses.
+Each pair becomes a high-value semantic memory optimized for question matching.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        pairs: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              question: { type: "string", description: "The question" },
+              answer: { type: "string", description: "The answer" },
+            },
+            required: ["question", "answer"],
+          },
+          description: "Array of Q&A pairs (min 1, max 100)",
+        },
+        importance: {
+          type: "number",
+          description: "Importance score 0-1 (default: 0.8)",
+        },
+        universe_id: {
+          type: "string",
+          description: "Optional universe UUID for scoped access",
+        },
+      },
+      required: ["pairs"],
+    },
+  },
+  {
+    name: "training_upload",
+    description: `Upload a document for training.
+
+Processes a local file (PDF, DOCX, TXT, MD, CSV) into memory chunks.
+Each chunk is classified and stored as an individual memory.
+The original file is not persisted — only the extracted knowledge.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        file_path: {
+          type: "string",
+          description: "Absolute path to the file on disk",
+        },
+        filename: {
+          type: "string",
+          description: "Display name for the file (optional, derived from path if omitted)",
+        },
+        universe_id: {
+          type: "string",
+          description: "Optional universe UUID for scoped access",
+        },
+        importance: {
+          type: "number",
+          description: "Base importance score 0-1 (default: 0.7)",
+        },
+      },
+      required: ["file_path"],
+    },
+  },
+  {
+    name: "training_stats",
+    description: `Get training statistics.
+
+Returns memory counts by type, layer, recent daily activity,
+and counts of gaps and conflicts. Useful for monitoring training progress.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "training_gaps",
+    description: `Identify training coverage gaps.
+
+Analyzes existing memories and suggests areas that need more training:
+- Missing procedural knowledge
+- Missing Q&A pairs
+- Low factual coverage
+- Low overall training volume`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "training_recent",
+    description: `Get recently created training memories.
+
+Returns the most recent memories ordered by creation date.
+Useful for reviewing what was recently taught or uploaded.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        limit: {
+          type: "integer",
+          description: "Maximum results (default: 20, max: 100)",
+        },
+      },
+      required: [],
+    },
+  },
 ];

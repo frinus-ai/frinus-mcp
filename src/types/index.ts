@@ -27,6 +27,8 @@ export type ToolHandler = (
 /** Dependencies injected into every tool handler. */
 export interface ToolHandlerDeps {
   memoryClient: MemoryClientInterface;
+  agentClient: AgentClientInterface;
+  cpClient: CpClientInterface;
   capture: InteractionCaptureInterface;
   resolvedUserEmail: string | null;
   resolvedUserId: string | null;
@@ -36,6 +38,28 @@ export interface ToolHandlerDeps {
 // ---------------------------------------------------------------------------
 // Minimal interfaces so modules don't import concrete classes across boundaries
 // ---------------------------------------------------------------------------
+
+/** Public surface of the AgentClient used by handlers. */
+export interface AgentClientInterface {
+  createAgent(data: {
+    name: string; template_id?: string; universe_id?: string;
+    persona?: Record<string, unknown>; team_id?: string; is_team_lead?: boolean;
+  }): Promise<any>;
+  listAgents(orgId?: string): Promise<any>;
+  getAgent(agentId: string): Promise<any>;
+  updateAgentPersona(agentId: string, data: {
+    name?: string; personality?: string; instructions?: string; greeting?: string;
+    forbidden_topics?: string[]; language?: string; specialization?: string;
+  }): Promise<any>;
+  deleteAgent(agentId: string): Promise<any>;
+}
+
+/** Public surface of the CpClient used by handlers. */
+export interface CpClientInterface {
+  createUniverse(orgId: string, data: { name: string; slug: string; description?: string }): Promise<any>;
+  listUniverses(orgId: string): Promise<any>;
+  updateUniverse(orgId: string, universeId: string, data: { name?: string; description?: string }): Promise<any>;
+}
 
 /** Public surface of the MemoryClient used by handlers. */
 export interface MemoryClientInterface {
@@ -115,6 +139,43 @@ export interface MemoryClientInterface {
     memory_ids: string[]; summary_content?: string; agent_id?: string;
   }): Promise<any>;
   getHierarchyTree(memoryId: string): Promise<any>;
+
+  // Knowledge Graph - Concepts
+  createConcept(data: { name: string; universe_id: string; description?: string }): Promise<any>;
+  listUniverseConcepts(universeId: string): Promise<any>;
+  updateConcept(conceptId: string, data: { name?: string; description?: string }): Promise<any>;
+  deleteConcept(conceptId: string): Promise<any>;
+
+  // Knowledge Graph - Themes
+  createTheme(data: { name: string; concept_id: string; description?: string }): Promise<any>;
+  listConceptThemes(conceptId: string): Promise<any>;
+  updateTheme(themeId: string, data: { name?: string; description?: string }): Promise<any>;
+  deleteTheme(themeId: string): Promise<any>;
+
+  // Knowledge Graph - Topics
+  createTopic(data: { name: string; theme_id: string; description?: string; status?: string }): Promise<any>;
+  listThemeTopics(themeId: string): Promise<any>;
+  updateTopic(topicId: string, data: { name?: string; description?: string }): Promise<any>;
+  updateTopicStatus(topicId: string, status: string): Promise<any>;
+  deleteTopic(topicId: string): Promise<any>;
+
+  // Knowledge Graph - Points
+  createPoint(data: { name: string; topic_id: string; description?: string; status?: string }): Promise<any>;
+  listTopicPoints(topicId: string): Promise<any>;
+  updatePoint(pointId: string, data: { name?: string; description?: string; content?: string }): Promise<any>;
+  updatePointStatus(pointId: string, status: string): Promise<any>;
+  deletePoint(pointId: string): Promise<any>;
+
+  // Knowledge Graph - Hierarchy
+  getUniverseHierarchy(universeId: string): Promise<any>;
+
+  // Training
+  trainingTeach(data: { content: string; type?: string; importance?: number; universe_id?: string }): Promise<any>;
+  trainingQa(data: { pairs: Array<{question: string; answer: string}>; importance?: number; universe_id?: string }): Promise<any>;
+  trainingUpload(data: { file_path: string; filename: string; universe_id?: string; importance?: number }): Promise<any>;
+  trainingStats(): Promise<any>;
+  trainingGaps(): Promise<any>;
+  trainingRecent(data?: { limit?: number }): Promise<any>;
 }
 
 /** Public surface of InteractionCapture used by the server. */
