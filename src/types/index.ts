@@ -52,6 +52,10 @@ export interface AgentClientInterface {
     forbidden_topics?: string[]; language?: string; specialization?: string;
   }): Promise<any>;
   deleteAgent(agentId: string): Promise<any>;
+  invokeAgent(data: {
+    agent_id?: string; agent_name?: string; message: string;
+    task_id?: string; context?: Record<string, unknown>; timeout_seconds?: number;
+  }): Promise<any>;
 }
 
 /** Public surface of the CpClient used by handlers. */
@@ -176,6 +180,27 @@ export interface MemoryClientInterface {
   trainingStats(): Promise<any>;
   trainingGaps(): Promise<any>;
   trainingRecent(data?: { limit?: number }): Promise<any>;
+
+  // Task Management
+  createTask(data: {
+    title: string; description?: string; assigned_agent_id?: string;
+    parent_task_id?: string; priority?: number; input_data?: Record<string, unknown>;
+  }): Promise<any>;
+  getTask(taskId: string): Promise<any>;
+  listTasks(data?: {
+    status?: string; assigned_agent_id?: string;
+    parent_task_id?: string; limit?: number;
+  }): Promise<any>;
+  updateTask(taskId: string, data: {
+    status?: string; output_data?: Record<string, unknown>;
+    error_message?: string;
+  }): Promise<any>;
+
+  // Skills
+  listSkills(category?: string): Promise<any>;
+  getAgentSkills(agentId: string): Promise<any>;
+  assignSkill(agentId: string, skillId: string, permission?: string): Promise<any>;
+  removeSkill(agentId: string, skillId: string): Promise<any>;
 }
 
 /** Public surface of InteractionCapture used by the server. */

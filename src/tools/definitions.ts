@@ -1222,4 +1222,235 @@ Useful for reviewing what was recently taught or uploaded.`,
       required: [],
     },
   },
+  // -------------------------------------------------------------------------
+  // Agent Invocation
+  // -------------------------------------------------------------------------
+  {
+    name: "agent_invoke",
+    description: `Invoke an agent to execute a task and return the result.
+
+Calls an agent by ID or name, waits for completion, and returns the full response.
+Use this for programmatic agent orchestration when you need a specialist's output.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_id: {
+          type: "string",
+          description: "UUID of the agent to invoke (use this OR agent_name)",
+        },
+        agent_name: {
+          type: "string",
+          description: "Name of the agent to invoke (use this OR agent_id)",
+        },
+        message: {
+          type: "string",
+          description: "The task/question for the agent",
+        },
+        context: {
+          type: "object",
+          description: "Optional context/data for the agent",
+        },
+        timeout_seconds: {
+          type: "integer",
+          description: "Timeout in seconds (default: 120, max: 600)",
+        },
+      },
+      required: ["message"],
+    },
+  },
+  // -------------------------------------------------------------------------
+  // Task Management (4 tools)
+  // -------------------------------------------------------------------------
+  {
+    name: "task_create",
+    description: `Create a tracked task for delegated work.
+
+Use this when assigning work to another agent or breaking down complex operations
+into subtasks. Returns the task ID for tracking progress.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        title: {
+          type: "string",
+          description: "Short title describing the task",
+        },
+        description: {
+          type: "string",
+          description: "Detailed description of what needs to be done",
+        },
+        assigned_agent_id: {
+          type: "string",
+          description: "UUID of the agent to assign this task to",
+        },
+        parent_task_id: {
+          type: "string",
+          description: "UUID of parent task (for creating subtasks)",
+        },
+        priority: {
+          type: "integer",
+          description: "Priority 1-10 (default 5). Higher = more urgent",
+        },
+        input_data: {
+          type: "object",
+          description: "Input data/context for the task",
+        },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "task_get",
+    description: `Get details of a specific task by ID.
+
+Returns full task information including status, output, timestamps, and metadata.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        task_id: {
+          type: "string",
+          description: "UUID of the task to retrieve",
+        },
+      },
+      required: ["task_id"],
+    },
+  },
+  {
+    name: "task_list",
+    description: `List tasks with optional filters.
+
+Can filter by status, assigned agent, or parent task. Returns paginated results
+ordered by creation date (newest first).`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["pending", "assigned", "running", "completed", "failed", "cancelled"],
+          description: "Filter by task status",
+        },
+        assigned_agent_id: {
+          type: "string",
+          description: "Filter by assigned agent UUID",
+        },
+        parent_task_id: {
+          type: "string",
+          description: "Filter by parent task UUID (get subtasks)",
+        },
+        limit: {
+          type: "integer",
+          description: "Max results (default: 50, max: 200)",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "task_update",
+    description: `Update a task's status, output, or error message.
+
+Use this to report progress (status='running'), submit results (status='completed'
+with output_data), or report failures (status='failed' with error_message).`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        task_id: {
+          type: "string",
+          description: "UUID of the task to update",
+        },
+        status: {
+          type: "string",
+          enum: ["pending", "assigned", "running", "completed", "failed", "cancelled"],
+          description: "New status for the task",
+        },
+        output_data: {
+          type: "object",
+          description: "Output/result data from task execution",
+        },
+        error_message: {
+          type: "string",
+          description: "Error message if task failed",
+        },
+      },
+      required: ["task_id"],
+    },
+  },
+  // ---------------------------------------------------------------------------
+  // Skills
+  // ---------------------------------------------------------------------------
+  {
+    name: "skill_list",
+    description: `List available skills in the organization.
+
+Returns skills with their schemas, categories, and integration requirements.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        category: {
+          type: "string",
+          description: "Filter by skill category (e.g., 'communication', 'development')",
+        },
+      },
+    },
+  },
+  {
+    name: "skill_agent_list",
+    description: `List skills assigned to a specific agent.
+
+Returns the agent's assigned skills with permission levels.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_id: {
+          type: "string",
+          description: "UUID of the agent",
+        },
+      },
+      required: ["agent_id"],
+    },
+  },
+  {
+    name: "skill_assign",
+    description: `Assign a skill to an agent.
+
+Gives an agent the ability to use a specific skill.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_id: {
+          type: "string",
+          description: "UUID of the agent",
+        },
+        skill_id: {
+          type: "string",
+          description: "UUID of the skill to assign",
+        },
+        permission: {
+          type: "string",
+          enum: ["execute", "manage"],
+          description: "Permission level (default: execute)",
+        },
+      },
+      required: ["agent_id", "skill_id"],
+    },
+  },
+  {
+    name: "skill_remove",
+    description: `Remove a skill from an agent.
+
+Revokes the agent's ability to use a specific skill.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_id: {
+          type: "string",
+          description: "UUID of the agent",
+        },
+        skill_id: {
+          type: "string",
+          description: "UUID of the skill to remove",
+        },
+      },
+      required: ["agent_id", "skill_id"],
+    },
+  },
 ];

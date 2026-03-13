@@ -66,4 +66,33 @@ export class AgentClient implements AgentClientInterface {
     }
     return response.data;
   }
+
+  async invokeAgent(data: {
+    agent_id?: string;
+    agent_name?: string;
+    message: string;
+    task_id?: string;
+    context?: Record<string, unknown>;
+    timeout_seconds?: number;
+  }): Promise<any> {
+    // Resolve agent_id from name if needed
+    let agentId = data.agent_id;
+    if (!agentId && data.agent_name) {
+      const agents = await this.listAgents();
+      const found = agents.find(
+        (a: any) => a.name?.toLowerCase() === data.agent_name!.toLowerCase()
+      );
+      if (found) agentId = found.id;
+      else throw new Error(`Agent '${data.agent_name}' not found`);
+    }
+    if (!agentId) throw new Error("Either agent_id or agent_name is required");
+
+    const response = await this.client.post(`/api/v1/agents/${agentId}/invoke`, {
+      task_id: data.task_id || "00000000-0000-0000-0000-000000000000",
+      message: data.message,
+      context: data.context,
+      timeout_seconds: data.timeout_seconds || 120,
+    }, { timeout: (data.timeout_seconds || 120) * 1000 + 5000 });
+    return response.data;
+  }
 }

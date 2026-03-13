@@ -541,4 +541,78 @@ export class MemoryClient implements MemoryClientInterface {
     const response = await this.client.get(`/training/recent${params}`);
     return response.data;
   }
+
+  // -------------------------------------------------------------------------
+  // Task Management
+  // -------------------------------------------------------------------------
+
+  async createTask(data: {
+    title: string;
+    description?: string;
+    assigned_agent_id?: string;
+    parent_task_id?: string;
+    priority?: number;
+    input_data?: Record<string, unknown>;
+  }) {
+    const response = await this.client.post("/tasks", data);
+    return response.data;
+  }
+
+  async getTask(taskId: string) {
+    const response = await this.client.get(`/tasks/${taskId}`);
+    return response.data;
+  }
+
+  async listTasks(data?: {
+    status?: string;
+    assigned_agent_id?: string;
+    parent_task_id?: string;
+    limit?: number;
+  }) {
+    const params = new URLSearchParams();
+    if (data?.status) params.append("status", data.status);
+    if (data?.assigned_agent_id) params.append("assigned_agent_id", data.assigned_agent_id);
+    if (data?.parent_task_id) params.append("parent_task_id", data.parent_task_id);
+    if (data?.limit) params.append("limit", data.limit.toString());
+    const qs = params.toString();
+    const response = await this.client.get(`/tasks${qs ? `?${qs}` : ""}`);
+    return response.data;
+  }
+
+  async updateTask(taskId: string, data: {
+    status?: string;
+    output_data?: Record<string, unknown>;
+    error_message?: string;
+  }) {
+    const response = await this.client.patch(`/tasks/${taskId}`, data);
+    return response.data;
+  }
+
+  // =========================================================================
+  // Skills
+  // =========================================================================
+
+  async listSkills(category?: string): Promise<any> {
+    const params: Record<string, string> = {};
+    if (category) params.category = category;
+    const response = await this.client.get('/skills', { params });
+    return response.data;
+  }
+
+  async getAgentSkills(agentId: string): Promise<any> {
+    const response = await this.client.get(`/skills/agent/${agentId}`);
+    return response.data;
+  }
+
+  async assignSkill(agentId: string, skillId: string, permission?: string): Promise<any> {
+    const response = await this.client.post(`/skills/agent/${agentId}/${skillId}`, {
+      permission: permission || 'execute',
+    });
+    return response.data;
+  }
+
+  async removeSkill(agentId: string, skillId: string): Promise<any> {
+    const response = await this.client.delete(`/skills/agent/${agentId}/${skillId}`);
+    return response.data;
+  }
 }

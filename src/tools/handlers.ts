@@ -1206,6 +1206,151 @@ const handlers: Record<string, HandlerFn> = {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
   },
+
+  // -------------------------------------------------------------------------
+  // Agent Invocation
+  // -------------------------------------------------------------------------
+
+  async agent_invoke(args, { agentClient }) {
+    const result = await agentClient.invokeAgent({
+      agent_id: args.agent_id as string | undefined,
+      agent_name: args.agent_name as string | undefined,
+      message: args.message as string,
+      context: args.context as Record<string, unknown> | undefined,
+      timeout_seconds: args.timeout_seconds as number | undefined,
+    });
+    const lines = [
+      `Agent: ${result.agent_name || result.agent_id}`,
+      `Status: ${result.status}`,
+      `Duration: ${result.duration_ms}ms`,
+      ``,
+      `Result:`,
+      result.result,
+    ];
+    if (result.tool_calls?.length > 0) {
+      lines.push(``, `Tools used: ${result.tool_calls.map((t: any) => t.name).join(", ")}`);
+    }
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  },
+
+  // -------------------------------------------------------------------------
+  // Task Management
+  // -------------------------------------------------------------------------
+
+  async task_create(args, { memoryClient }) {
+    const result = await memoryClient.createTask({
+      title: args.title as string,
+      description: args.description as string | undefined,
+      assigned_agent_id: args.assigned_agent_id as string | undefined,
+      parent_task_id: args.parent_task_id as string | undefined,
+      priority: args.priority as number | undefined,
+      input_data: args.input_data as Record<string, unknown> | undefined,
+    });
+    const t = result;
+    const lines = [
+      `Task created: ${t.id}`,
+      `Title: ${t.title}`,
+      `Status: ${t.status}`,
+      t.assigned_agent_id ? `Assigned to: ${t.assigned_agent_id}` : null,
+      t.parent_task_id ? `Parent task: ${t.parent_task_id}` : null,
+      `Priority: ${t.priority}`,
+      `Created: ${t.created_at}`,
+    ].filter(Boolean);
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  },
+
+  async task_get(args, { memoryClient }) {
+    const result = await memoryClient.getTask(args.task_id as string);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  },
+
+  async task_list(args, { memoryClient }) {
+    const result = await memoryClient.listTasks({
+      status: args.status as string | undefined,
+      assigned_agent_id: args.assigned_agent_id as string | undefined,
+      parent_task_id: args.parent_task_id as string | undefined,
+      limit: args.limit as number | undefined,
+    });
+    const tasks = result.tasks || [];
+    if (tasks.length === 0) {
+      return { content: [{ type: "text", text: "No tasks found." }] };
+    }
+    const lines = tasks.map((t: any) =>
+      `[${t.status}] ${t.title} (${t.id}) priority=${t.priority}${t.assigned_agent_id ? ` → agent:${t.assigned_agent_id}` : ""}`
+    );
+    return {
+      content: [{ type: "text", text: `${result.total} tasks:\n${lines.join("\n")}` }],
+    };
+  },
+
+  async task_update(args, { memoryClient }) {
+    const result = await memoryClient.updateTask(args.task_id as string, {
+      status: args.status as string | undefined,
+      output_data: args.output_data as Record<string, unknown> | undefined,
+      error_message: args.error_message as string | undefined,
+    });
+    const t = result;
+    const lines = [
+      `Task updated: ${t.id}`,
+      `Title: ${t.title}`,
+      `Status: ${t.status}`,
+      t.completed_at ? `Completed: ${t.completed_at}` : null,
+      t.error_message ? `Error: ${t.error_message}` : null,
+    ].filter(Boolean);
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  },
+
+  // -------------------------------------------------------------------------
+  // Skills
+  // -------------------------------------------------------------------------
+
+  async skill_list(args, { memoryClient }) {
+    const result = await memoryClient.listSkills(args.category as string | undefined);
+    const skills = result.skills || result;
+    const lines = [`Found ${Array.isArray(skills) ? skills.length : 0} skills:\n`];
+    if (Array.isArray(skills)) {
+      for (const s of skills) {
+        lines.push(`- **${s.name}** (${s.slug}) [${s.category || 'uncategorized'}]`);
+        if (s.description) lines.push(`  ${s.description}`);
+        lines.push(`  Handler: ${s.handler_type} | Active: ${s.is_active}`);
+      }
+    }
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  },
+
+  async skill_agent_list(args, { memoryClient }) {
+    const agentId = args.agent_id as string;
+    const skills = await memoryClient.getAgentSkills(agentId);
+    const list = Array.isArray(skills) ? skills : [];
+    const lines = [`Agent ${agentId} has ${list.length} skills:\n`];
+    for (const s of list) {
+      lines.push(`- **${s.skill_name}** (${s.skill_slug}) — permission: ${s.permission}`);
+    }
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  },
+
+  async skill_assign(args, { memoryClient }) {
+    const result = await memoryClient.assignSkill(
+      args.agent_id as string,
+      args.skill_id as string,
+      args.permission as string | undefined,
+    );
+    return {
+      content: [{
+        type: "text",
+        text: `Skill ${result.skill_name} assigned to agent ${result.agent_id} with permission: ${result.permission}`,
+      }],
+    };
+  },
+
+  async skill_remove(args, { memoryClient }) {
+    await memoryClient.removeSkill(args.agent_id as string, args.skill_id as string);
+    return {
+      content: [{ type: "text", text: `Skill ${args.skill_id} removed from agent ${args.agent_id}` }],
+    };
+  },
 };
 
 // ---------------------------------------------------------------------------
