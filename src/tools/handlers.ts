@@ -12,19 +12,33 @@ import { getResolvedTenantOrgId } from "../client/memory-client.js";
 // Helper: 401/403 error handling
 // ---------------------------------------------------------------------------
 export function handleApiError(error: any): ToolResult | null {
-  if (error?.response?.status === 401) {
+  const status = error?.response?.status;
+  if (status === 401) {
     return {
       content: [{ type: "text", text: "Authentication error (401). Check API key configuration." }],
       isError: true,
     };
   }
-  if (error?.response?.status === 403) {
+  if (status === 403) {
     return {
       content: [{ type: "text", text: "Permission denied. You don't have access to this scope." }],
       isError: true,
     };
   }
-  return null; // Not an auth error, let it propagate
+  if (status === 504) {
+    const detail = error?.response?.data?.detail || "Embedding model timeout";
+    return {
+      content: [{ type: "text", text: `Search timeout (504): ${detail}. The embedding model may be loading or overloaded.` }],
+      isError: true,
+    };
+  }
+  if (status === 502) {
+    return {
+      content: [{ type: "text", text: "Service unavailable (502). The Memory Engine may be restarting." }],
+      isError: true,
+    };
+  }
+  return null; // Not a known error, let it propagate
 }
 
 // ---------------------------------------------------------------------------
@@ -60,12 +74,19 @@ const handlers: Record<string, HandlerFn> = {
   },
 
   async memory_search(args, { memoryClient }) {
-    const results = await memoryClient.searchMemories({
-      query_text: args.query_text as string,
-      agent_id: args.agent_id as string,
-      memory_types: args.memory_types as string[],
-      limit: args.limit as number,
-    });
+    let results: any;
+    try {
+      results = await memoryClient.searchMemories({
+        query_text: args.query_text as string,
+        agent_id: args.agent_id as string,
+        memory_types: args.memory_types as string[],
+        limit: args.limit as number,
+      });
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
 
     if (!results || results.length === 0) {
       return { content: [{ type: "text", text: "No memories found matching the query." }] };
@@ -416,13 +437,20 @@ const handlers: Record<string, HandlerFn> = {
   // ==========================================================================
 
   async search_with_attention(args, { memoryClient, resolvedUserId }) {
-    const results = await memoryClient.searchWithAttention({
-      query_text: args.query_text as string,
-      task_type: args.task_type as string,
-      limit: args.limit as number,
-      agent_id: (args.agent_id as string) || undefined,
-      user_id: (args.user_id as string) || resolvedUserId || undefined,
-    });
+    let results: any;
+    try {
+      results = await memoryClient.searchWithAttention({
+        query_text: args.query_text as string,
+        task_type: args.task_type as string,
+        limit: args.limit as number,
+        agent_id: (args.agent_id as string) || undefined,
+        user_id: (args.user_id as string) || resolvedUserId || undefined,
+      });
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
 
     if (!results || !results.memories || results.memories.length === 0) {
       return { content: [{ type: "text", text: "No memories found." }] };
