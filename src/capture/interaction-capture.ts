@@ -144,8 +144,8 @@ export class InteractionCapture implements InteractionCaptureInterface {
           importance: this.importanceFor(toolName, "input"),
           metadata,
         })
-        .catch(() => {
-          // Silently ignore capture failures
+        .catch((err: any) => {
+          console.error('[MCP] Capture failed (input):', err.message);
         });
     }
 
@@ -171,8 +171,8 @@ export class InteractionCapture implements InteractionCaptureInterface {
         importance: this.importanceFor(toolName, "output"),
         metadata: { ...metadata, is_error: result.isError || false },
       })
-      .catch(() => {
-        // Silently ignore capture failures
+      .catch((err: any) => {
+        console.error('[MCP] Capture failed (output):', err.message);
       });
   }
 

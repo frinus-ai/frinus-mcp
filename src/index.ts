@@ -111,7 +111,11 @@ async function main() {
     });
 
     // Fire-and-forget: capture the tool call interaction to the memory stream
-    capture.captureToolCall(name, args as Record<string, unknown>, toolResult);
+    try {
+      capture.captureToolCall(name, args as Record<string, unknown>, toolResult);
+    } catch (err: any) {
+      console.error('[MCP] Capture failed:', err.message);
+    }
 
     return toolResult;
   });

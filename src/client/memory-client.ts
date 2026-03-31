@@ -7,6 +7,14 @@ import type { MemoryClientInterface } from "../types/index.js";
 /**
  * Mutable tenant / user state resolved at startup.
  * Shared with the rest of the server via the exported getters/setters below.
+ *
+ * NOTE: These are module-level singletons, not instance properties, because
+ * they are consumed by multiple client classes (MemoryClient, AgentClient,
+ * CpClient) and tool handlers via Axios request interceptors that capture
+ * the getter at construction time.  Moving them to a single class instance
+ * would require threading that instance through every consumer, which is
+ * disproportionate for an MCP server that runs as a single-process stdio
+ * bridge.  Use `resetState()` in tests or when reinitializing the server.
  */
 let resolvedTenantOrgId: string | null = process.env.FRINUS_TENANT_ORG_ID || null;
 let resolvedUserEmail: string | null = null;
@@ -20,6 +28,13 @@ export function setResolvedUserEmail(v: string | null): void { resolvedUserEmail
 
 export function getResolvedUserId(): string | null { return resolvedUserId; }
 export function setResolvedUserId(v: string | null): void { resolvedUserId = v; }
+
+/** Reset all mutable module state. Useful for tests or server reinitialization. */
+export function resetState(): void {
+  resolvedTenantOrgId = process.env.FRINUS_TENANT_ORG_ID || null;
+  resolvedUserEmail = null;
+  resolvedUserId = null;
+}
 
 // Memory service client
 export class MemoryClient implements MemoryClientInterface {

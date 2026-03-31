@@ -53,24 +53,30 @@ const handlers: Record<string, HandlerFn> = {
   // ==========================================================================
 
   async memory_store(args, { memoryClient, resolvedUserId }) {
-    const createdByUser = (args.created_by_user_id as string) || resolvedUserId || undefined;
-    const userId = (args.user_id as string) || resolvedUserId || undefined;
-    const result = await memoryClient.storeMemory({
-      agent_id: args.agent_id as string,
-      content: args.content as string,
-      memory_type: args.memory_type as string,
-      scope: args.scope as string,
-      importance: args.importance as number,
-      user_id: userId,
-      created_by_user_id: createdByUser,
-      metadata: args.metadata as Record<string, unknown> | undefined,
-    });
-    return {
-      content: [{
-        type: "text",
-        text: `Memory stored successfully.\nID: ${result.id}\nType: ${result.memory_type}\nScope: ${result.scope}`,
-      }],
-    };
+    try {
+      const createdByUser = (args.created_by_user_id as string) || resolvedUserId || undefined;
+      const userId = (args.user_id as string) || resolvedUserId || undefined;
+      const result = await memoryClient.storeMemory({
+        agent_id: args.agent_id as string,
+        content: args.content as string,
+        memory_type: args.memory_type as string,
+        scope: args.scope as string,
+        importance: args.importance as number,
+        user_id: userId,
+        created_by_user_id: createdByUser,
+        metadata: args.metadata as Record<string, unknown> | undefined,
+      });
+      return {
+        content: [{
+          type: "text",
+          text: `Memory stored successfully.\nID: ${result.id}\nType: ${result.memory_type}\nScope: ${result.scope}`,
+        }],
+      };
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
   },
 
   async memory_search(args, { memoryClient }) {
@@ -101,43 +107,55 @@ const handlers: Record<string, HandlerFn> = {
   },
 
   async memory_get(args, { memoryClient }) {
-    const result = await memoryClient.getMemory(args.memory_id as string);
+    try {
+      const result = await memoryClient.getMemory(args.memory_id as string);
 
-    let formatted = `Memory Details:\n`;
-    formatted += `ID: ${result.id}\n`;
-    formatted += `Type: ${result.memory_type}\n`;
-    formatted += `Scope: ${result.scope}\n`;
-    formatted += `Level: ${result.hierarchy_level || 'raw'}\n`;
-    formatted += `Importance: ${result.importance?.toFixed(2) || 'N/A'}\n`;
-    formatted += `Relevance: ${result.relevance_score?.toFixed(2) || 'N/A'}\n`;
-    formatted += `Created: ${result.created_at}\n`;
-    formatted += `\nContent:\n${result.content}`;
+      let formatted = `Memory Details:\n`;
+      formatted += `ID: ${result.id}\n`;
+      formatted += `Type: ${result.memory_type}\n`;
+      formatted += `Scope: ${result.scope}\n`;
+      formatted += `Level: ${result.hierarchy_level || 'raw'}\n`;
+      formatted += `Importance: ${result.importance?.toFixed(2) || 'N/A'}\n`;
+      formatted += `Relevance: ${result.relevance_score?.toFixed(2) || 'N/A'}\n`;
+      formatted += `Created: ${result.created_at}\n`;
+      formatted += `\nContent:\n${result.content}`;
 
-    if (result.metadata && Object.keys(result.metadata).length > 0) {
-      formatted += `\n\nMetadata: ${JSON.stringify(result.metadata, null, 2)}`;
+      if (result.metadata && Object.keys(result.metadata).length > 0) {
+        formatted += `\n\nMetadata: ${JSON.stringify(result.metadata, null, 2)}`;
+      }
+
+      return { content: [{ type: "text", text: formatted }] };
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
     }
-
-    return { content: [{ type: "text", text: formatted }] };
   },
 
   async memory_list(args, { memoryClient }) {
-    const results = await memoryClient.getAgentMemories(
-      args.agent_id as string,
-      args.memory_type as string,
-      (args.limit as number) || 50
-    );
+    try {
+      const results = await memoryClient.getAgentMemories(
+        args.agent_id as string,
+        args.memory_type as string,
+        (args.limit as number) || 50
+      );
 
-    if (!results || results.length === 0) {
-      return { content: [{ type: "text", text: "No memories found for this agent." }] };
+      if (!results || results.length === 0) {
+        return { content: [{ type: "text", text: "No memories found for this agent." }] };
+      }
+
+      let formatted = `Memories for agent ${args.agent_id}:\n\n`;
+      results.forEach((mem: any, i: number) => {
+        const content = mem.content.length > 200 ? mem.content.slice(0, 200) + "..." : mem.content;
+        formatted += `${i + 1}. [${mem.memory_type}] (importance: ${(mem.importance || 0).toFixed(2)})\n`;
+        formatted += `   ${content}\n\n`;
+      });
+      return { content: [{ type: "text", text: formatted }] };
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
     }
-
-    let formatted = `Memories for agent ${args.agent_id}:\n\n`;
-    results.forEach((mem: any, i: number) => {
-      const content = mem.content.length > 200 ? mem.content.slice(0, 200) + "..." : mem.content;
-      formatted += `${i + 1}. [${mem.memory_type}] (importance: ${(mem.importance || 0).toFixed(2)})\n`;
-      formatted += `   ${content}\n\n`;
-    });
-    return { content: [{ type: "text", text: formatted }] };
   },
 
   async memory_delete(args, { memoryClient }) {
@@ -1403,31 +1421,42 @@ export async function dispatchTool(
   }
 
   try {
-    return await handler(args, deps);
-  } catch (error: any) {
-    // Check for 401/403 auth errors first
-    const authError = handleApiError(error);
-    if (authError) return authError;
+    try {
+      return await handler(args, deps);
+    } catch (error: any) {
+      // Check for 401/403/502/504 auth/infra errors first
+      const authError = handleApiError(error);
+      if (authError) return authError;
 
-    let message: string;
-    const detail = error.response?.data?.detail;
+      let message: string;
+      const detail = error.response?.data?.detail;
 
-    if (Array.isArray(detail)) {
-      // Pydantic validation errors come as an array of objects
-      message = detail.map((d: any) => {
-        const loc = d.loc ? d.loc.join('.') : 'unknown';
-        return `${loc}: ${d.msg}`;
-      }).join('; ');
-    } else if (typeof detail === 'string') {
-      message = detail;
-    } else if (typeof detail === 'object' && detail !== null) {
-      message = JSON.stringify(detail);
-    } else {
-      message = error.message || "Unknown error";
+      if (Array.isArray(detail)) {
+        // Pydantic validation errors come as an array of objects
+        message = detail.map((d: any) => {
+          const loc = d.loc ? d.loc.join('.') : 'unknown';
+          return `${loc}: ${d.msg}`;
+        }).join('; ');
+      } else if (typeof detail === 'string') {
+        message = detail;
+      } else if (typeof detail === 'object' && detail !== null) {
+        message = JSON.stringify(detail);
+      } else {
+        message = error.message || "Unknown error";
+      }
+
+      console.error('[MCP] Tool error:', name, message);
+      return {
+        content: [{ type: "text", text: `Error: ${message}` }],
+        isError: true,
+      };
     }
-
+  } catch (unexpected) {
+    // Outermost safety net: guarantee a valid ToolResult even on truly
+    // unexpected errors (e.g. TypeError in the error-handling block above).
+    console.error('[MCP] Unhandled tool error:', name, unexpected);
     return {
-      content: [{ type: "text", text: `Error: ${message}` }],
+      content: [{ type: "text", text: `Tool error: ${unexpected instanceof Error ? unexpected.message : String(unexpected)}` }],
       isError: true,
     };
   }
