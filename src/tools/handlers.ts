@@ -56,11 +56,28 @@ const handlers: Record<string, HandlerFn> = {
     try {
       const createdByUser = (args.created_by_user_id as string) || resolvedUserId || undefined;
       const userId = (args.user_id as string) || resolvedUserId || undefined;
+
+      // Auto-scope inference: if scope not provided, pick the narrowest
+      // scope justified by the available context. Caller can always pass
+      // an explicit `scope` to override this heuristic.
+      const meta = (args.metadata as Record<string, unknown> | undefined) || {};
+      const universeId = (args.universe_id as string) || (meta.universe_id as string) || undefined;
+      let resolvedScope = args.scope as string | undefined;
+      if (!resolvedScope) {
+        if (userId || createdByUser) {
+          resolvedScope = "user";
+        } else if (universeId) {
+          resolvedScope = "universe";
+        } else {
+          resolvedScope = "organization";
+        }
+      }
+
       const result = await memoryClient.storeMemory({
         agent_id: args.agent_id as string,
         content: args.content as string,
         memory_type: args.memory_type as string,
-        scope: args.scope as string,
+        scope: resolvedScope,
         importance: args.importance as number,
         user_id: userId,
         created_by_user_id: createdByUser,
@@ -263,6 +280,29 @@ const handlers: Record<string, HandlerFn> = {
 
       // Replace auto-generated session ID with the formal one
       capture.sessionId = result.session_id;
+
+      // P1 BOOT auto-populate: seed working memory with the session id and
+      // agent role so subsequent `working_memory_get(agent:<id>)` calls
+      // return something meaningful instead of "No working memory".
+      // Fire-and-forget; failures must never break session_start.
+      const agentId = args.agent_id as string | undefined;
+      if (agentId) {
+        const seed =
+          `SESSION_ID: ${result.session_id}\n` +
+          `AGENT_ID: ${agentId}\n` +
+          (result.agent_context ? `ROLE: ${String(result.agent_context).slice(0, 400)}\n` : "") +
+          `BOOT: P1 executed at ${new Date().toISOString()}`;
+        memoryClient
+          .addWorkingMemory({
+            context_id: `agent:${agentId}`,
+            content: seed,
+            agent_id: agentId,
+            ttl_seconds: 3600,
+          })
+          .catch((err: any) => {
+            console.error('[MCP] P1 BOOT working_memory seed failed:', err?.message || err);
+          });
+      }
 
       let msg = `Session started: ${result.session_id}\n`;
       if (result.parent_session_id) msg += `Parent session: ${result.parent_session_id}\n`;
