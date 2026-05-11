@@ -946,7 +946,7 @@ const handlers: Record<string, HandlerFn> = {
     return {
       content: [{
         type: "text",
-        text: `Concept created.\nID: ${result.id}\nName: ${result.name}\nUniverse: ${result.universe_id}`,
+        text: `Concept created.\nID: ${result.concept_id}\nName: ${result.name}\nUniverse: ${result.universe_id}`,
       }],
     };
   },
@@ -959,7 +959,7 @@ const handlers: Record<string, HandlerFn> = {
     }
     let formatted = "Concepts:\n\n";
     concepts.forEach((c: any, i: number) => {
-      formatted += `${i + 1}. ${c.name} (ID: ${c.id})\n`;
+      formatted += `${i + 1}. ${c.name} (ID: ${c.concept_id})\n`;
       if (c.description) formatted += `   ${c.description}\n`;
       formatted += `\n`;
     });
@@ -1003,7 +1003,7 @@ const handlers: Record<string, HandlerFn> = {
     return {
       content: [{
         type: "text",
-        text: `Theme created.\nID: ${result.id}\nName: ${result.name}\nConcept: ${result.concept_id}`,
+        text: `Theme created.\nID: ${result.theme_id}\nName: ${result.name}\nConcept: ${result.concept_id}`,
       }],
     };
   },
@@ -1016,7 +1016,7 @@ const handlers: Record<string, HandlerFn> = {
     }
     let formatted = "Themes:\n\n";
     themes.forEach((t: any, i: number) => {
-      formatted += `${i + 1}. ${t.name} (ID: ${t.id})\n`;
+      formatted += `${i + 1}. ${t.name} (ID: ${t.theme_id})\n`;
       if (t.description) formatted += `   ${t.description}\n`;
       formatted += `\n`;
     });
@@ -1061,7 +1061,7 @@ const handlers: Record<string, HandlerFn> = {
     return {
       content: [{
         type: "text",
-        text: `Topic created.\nID: ${result.id}\nName: ${result.name}\nTheme: ${result.theme_id}\nStatus: ${result.status || 'pending'}`,
+        text: `Topic created.\nID: ${result.topic_id}\nName: ${result.name}\nTheme: ${result.theme_id}\nStatus: ${result.status || 'pending'}`,
       }],
     };
   },
@@ -1074,7 +1074,7 @@ const handlers: Record<string, HandlerFn> = {
     }
     let formatted = "Topics:\n\n";
     topics.forEach((t: any, i: number) => {
-      formatted += `${i + 1}. ${t.name} (ID: ${t.id})\n`;
+      formatted += `${i + 1}. ${t.name} (ID: ${t.topic_id})\n`;
       formatted += `   Status: ${t.status || 'pending'}`;
       if (t.description) formatted += ` | ${t.description}`;
       formatted += `\n\n`;
@@ -1131,7 +1131,7 @@ const handlers: Record<string, HandlerFn> = {
     return {
       content: [{
         type: "text",
-        text: `Point created.\nID: ${result.id}\nName: ${result.name}\nTopic: ${result.topic_id}\nStatus: ${result.status || 'pending'}`,
+        text: `Point created.\nID: ${result.point_id}\nName: ${result.name}\nTopic: ${result.topic_id}\nStatus: ${result.status || 'pending'}`,
       }],
     };
   },
@@ -1144,7 +1144,7 @@ const handlers: Record<string, HandlerFn> = {
     }
     let formatted = "Points:\n\n";
     points.forEach((p: any, i: number) => {
-      formatted += `${i + 1}. ${p.name} (ID: ${p.id})\n`;
+      formatted += `${i + 1}. ${p.name} (ID: ${p.point_id})\n`;
       formatted += `   Status: ${p.status || 'pending'}`;
       if (p.description) formatted += ` | ${p.description}`;
       formatted += `\n\n`;
@@ -1205,23 +1205,23 @@ const handlers: Record<string, HandlerFn> = {
     }
 
     concepts.forEach((concept: any, ci: number) => {
-      formatted += `[L0] ${ci + 1}. ${concept.name} (ID: ${concept.id})\n`;
+      formatted += `[L0] ${ci + 1}. ${concept.name} (ID: ${concept.concept_id || concept.id})\n`;
       if (concept.description) formatted += `     ${concept.description}\n`;
 
       const themes = concept.themes || [];
       themes.forEach((theme: any, ti: number) => {
-        formatted += `  [L1] ${ci + 1}.${ti + 1}. ${theme.name} (ID: ${theme.id})\n`;
+        formatted += `  [L1] ${ci + 1}.${ti + 1}. ${theme.name} (ID: ${theme.theme_id || theme.id})\n`;
         if (theme.description) formatted += `       ${theme.description}\n`;
 
         const topics = theme.topics || [];
         topics.forEach((topic: any, toi: number) => {
           const statusIcon = topic.status === 'completed' ? '[x]' : topic.status === 'in_progress' ? '[~]' : '[ ]';
-          formatted += `    [L2] ${statusIcon} ${ci + 1}.${ti + 1}.${toi + 1}. ${topic.name} (ID: ${topic.id})\n`;
+          formatted += `    [L2] ${statusIcon} ${ci + 1}.${ti + 1}.${toi + 1}. ${topic.name} (ID: ${topic.topic_id || topic.id})\n`;
 
           const points = topic.points || [];
           points.forEach((point: any, pi: number) => {
             const pIcon = point.status === 'completed' ? '[x]' : '[ ]';
-            formatted += `      [L3] ${pIcon} ${ci + 1}.${ti + 1}.${toi + 1}.${pi + 1}. ${point.name} (ID: ${point.id})\n`;
+            formatted += `      [L3] ${pIcon} ${ci + 1}.${ti + 1}.${toi + 1}.${pi + 1}. ${point.name} (ID: ${point.point_id || point.id})\n`;
           });
         });
       });
