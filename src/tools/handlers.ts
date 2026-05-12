@@ -82,6 +82,7 @@ const handlers: Record<string, HandlerFn> = {
         user_id: userId,
         created_by_user_id: createdByUser,
         metadata: args.metadata as Record<string, unknown> | undefined,
+        context_id: args.context_id as string | undefined,
       });
       return {
         content: [{

@@ -85,6 +85,7 @@ export interface MemoryClientInterface {
     agent_id: string; content: string; memory_type?: string; scope?: string;
     importance?: number; user_id?: string;
     created_by_user_id?: string; metadata?: Record<string, unknown>;
+    context_id?: string;
   }): Promise<any>;
   searchMemories(data: {
     query_text: string; agent_id?: string;

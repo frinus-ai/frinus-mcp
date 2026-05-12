@@ -64,6 +64,10 @@ Scopes:
           type: "object",
           description: "Metadata adicional (tags, universe, idioma, etc.)",
         },
+        context_id: {
+          type: "string",
+          description: "Optional UUID of a hierarchy node (universe, concept, theme, topic, or point). When provided, the memory is automatically linked to this node and all its ancestors. Takes precedence over universe_id for hierarchy placement.",
+        },
       },
       required: ["agent_id", "content"],
     },
