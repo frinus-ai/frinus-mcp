@@ -934,6 +934,23 @@ const handlers: Record<string, HandlerFn> = {
     };
   },
 
+  async universe_delete(args, { cpClient }) {
+    const orgId = getResolvedTenantOrgId();
+    if (!orgId) {
+      return {
+        content: [{ type: "text", text: "Error: No organization context. API key may not be linked to an org." }],
+        isError: true,
+      };
+    }
+    await cpClient.deleteUniverse(orgId, args.universe_id as string);
+    return {
+      content: [{
+        type: "text",
+        text: `Universe deleted.\nID: ${args.universe_id}`,
+      }],
+    };
+  },
+
   // ==========================================================================
   // Knowledge Graph - Concepts
   // ==========================================================================

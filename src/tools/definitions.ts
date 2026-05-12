@@ -808,6 +808,20 @@ The org_id is auto-resolved from your API key.`,
       required: ["universe_id"],
     },
   },
+  {
+    name: "universe_delete",
+    description: `Delete a universe and all its contents (concepts, themes, topics, points).
+
+WARNING: This is destructive and cannot be undone.
+The org_id is auto-resolved from your API key.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        universe_id: { type: "string", description: "UUID of the universe to delete" },
+      },
+      required: ["universe_id"],
+    },
+  },
   // ==========================================================================
   // Knowledge Graph - Concepts (4)
   // ==========================================================================

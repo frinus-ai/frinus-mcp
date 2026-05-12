@@ -44,4 +44,8 @@ export class CpClient implements CpClientInterface {
     const response = await this.client.put(`/api/v1/orgs/${orgId}/universes/${universeId}`, data);
     return response.data;
   }
+
+  async deleteUniverse(orgId: string, universeId: string): Promise<void> {
+    await this.client.delete(`/api/v1/orgs/${orgId}/universes/${universeId}`);
+  }
 }

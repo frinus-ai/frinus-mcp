@@ -63,6 +63,7 @@ export interface CpClientInterface {
   createUniverse(orgId: string, data: { name: string; slug: string; description?: string }): Promise<any>;
   listUniverses(orgId: string): Promise<any>;
   updateUniverse(orgId: string, universeId: string, data: { name?: string; description?: string }): Promise<any>;
+  deleteUniverse(orgId: string, universeId: string): Promise<void>;
 }
 
 /** Public surface of the MemoryClient used by handlers. */
