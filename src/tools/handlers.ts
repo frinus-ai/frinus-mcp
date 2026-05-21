@@ -118,7 +118,7 @@ const handlers: Record<string, HandlerFn> = {
 
     let formatted = "Found memories:\n\n";
     results.forEach((mem: any, i: number) => {
-      formatted += `${i + 1}. [${mem.memory_type}] (similarity: ${(mem.similarity || 0).toFixed(2)})\n`;
+      formatted += `${i + 1}. [${mem.memory_type}] (id: ${mem.id}) (similarity: ${(mem.similarity || 0).toFixed(2)})\n`;
       formatted += `   ${mem.content}\n\n`;
     });
     return { content: [{ type: "text", text: formatted }] };
@@ -165,7 +165,7 @@ const handlers: Record<string, HandlerFn> = {
       let formatted = `Memories for agent ${args.agent_id}:\n\n`;
       results.forEach((mem: any, i: number) => {
         const content = mem.content.length > 200 ? mem.content.slice(0, 200) + "..." : mem.content;
-        formatted += `${i + 1}. [${mem.memory_type}] (importance: ${(mem.importance || 0).toFixed(2)})\n`;
+        formatted += `${i + 1}. [${mem.memory_type}] (id: ${mem.id}) (importance: ${(mem.importance || 0).toFixed(2)})\n`;
         formatted += `   ${content}\n\n`;
       });
       return { content: [{ type: "text", text: formatted }] };
@@ -376,7 +376,7 @@ const handlers: Record<string, HandlerFn> = {
     if (result.long_term_memories && result.long_term_memories.length > 0) {
       formatted += `Long-Term Memories (${result.long_term_memories.length} items):\n`;
       result.long_term_memories.forEach((mem: any, i: number) => {
-        formatted += `  ${i + 1}. [${mem.memory_type}] ${mem.content?.slice(0, 100)}...\n`;
+        formatted += `  ${i + 1}. [${mem.memory_type}] (id: ${mem.id}) ${mem.content?.slice(0, 100)}...\n`;
       });
     }
     return { content: [{ type: "text", text: formatted }] };
@@ -521,7 +521,7 @@ const handlers: Record<string, HandlerFn> = {
     }
     formatted += `\n`;
     results.memories.forEach((mem: any, i: number) => {
-      formatted += `${i + 1}. [${mem.memory_type}] (score: ${mem.weighted_score?.toFixed(2) || mem.similarity?.toFixed(2)})\n`;
+      formatted += `${i + 1}. [${mem.memory_type}] (id: ${mem.id}) (score: ${mem.weighted_score?.toFixed(2) || mem.similarity?.toFixed(2)})\n`;
       formatted += `   ${mem.content?.slice(0, 200)}...\n\n`;
     });
     return { content: [{ type: "text", text: formatted }] };
