@@ -83,6 +83,7 @@ const handlers: Record<string, HandlerFn> = {
         created_by_user_id: createdByUser,
         metadata: args.metadata as Record<string, unknown> | undefined,
         context_id: args.context_id as string | undefined,
+        credential_ref: args.credential_ref as string | undefined,
       });
       return {
         content: [{
@@ -1454,6 +1455,107 @@ const handlers: Record<string, HandlerFn> = {
     return {
       content: [{ type: "text", text: `Skill ${args.skill_id} removed from agent ${args.agent_id}` }],
     };
+  },
+
+  // ==========================================================================
+  // Credential Vault
+  // ==========================================================================
+
+  async credential_store(args, { cpClient }) {
+    try {
+      const ref = args.ref as string;
+      const data = args.data as Record<string, unknown>;
+      const metadata = args.metadata as Record<string, unknown> | undefined;
+      const result = await cpClient.storeCredential(ref, data, metadata);
+      return {
+        content: [{
+          type: "text",
+          text: `Credential stored successfully.\nRef: ${ref}\nID: ${result.id}`,
+        }],
+      };
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+  },
+
+  async credential_get(args, { cpClient }) {
+    try {
+      const ref = args.ref as string;
+      const result = await cpClient.getCredential(ref);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        }],
+      };
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        return {
+          content: [{
+            type: "text",
+            text: `No credential found for ref '${args.ref}'`,
+          }],
+        };
+      }
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+  },
+
+  async credential_list(_args, { cpClient }) {
+    try {
+      const result = await cpClient.listCredentials();
+      const items = result.items || [];
+      if (items.length === 0) {
+        return {
+          content: [{
+            type: "text",
+            text: "No credentials stored.",
+          }],
+        };
+      }
+      const lines = items.map((c: any) =>
+        `- ${c.integration_type} (created: ${c.created_at})`
+      );
+      return {
+        content: [{
+          type: "text",
+          text: `Stored credentials (${items.length}):\n${lines.join("\n")}`,
+        }],
+      };
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+  },
+
+  async credential_delete(args, { cpClient }) {
+    try {
+      const ref = args.ref as string;
+      await cpClient.deleteCredential(ref);
+      return {
+        content: [{
+          type: "text",
+          text: `Credential '${ref}' deleted successfully.`,
+        }],
+      };
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        return {
+          content: [{
+            type: "text",
+            text: `No credential found for ref '${args.ref}'`,
+          }],
+        };
+      }
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
   },
 };
 

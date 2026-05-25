@@ -68,6 +68,10 @@ Scopes:
           type: "string",
           description: "Optional UUID of a hierarchy node (universe, concept, theme, topic, or point). When provided, the memory is automatically linked to this node and all its ancestors. Takes precedence over universe_id for hierarchy placement.",
         },
+        credential_ref: {
+          type: "string",
+          description: "Reference key linking this memory to an encrypted credential in the vault. When an agent retrieves this memory and sees a credential_ref, it can fetch the credential via credential_get(ref). E.g., 'jira_muza', 'mysql_centerpag'.",
+        },
       },
       required: ["agent_id", "content"],
     },
@@ -1469,6 +1473,87 @@ Revokes the agent's ability to use a specific skill.`,
         },
       },
       required: ["agent_id", "skill_id"],
+    },
+  },
+  // ==========================================================================
+  // Credential Vault (4)
+  // ==========================================================================
+  {
+    name: "credential_store",
+    description: `Store an encrypted credential in the vault.
+
+Credentials are encrypted at rest with AES-256-GCM using per-org derived keys.
+Use this to securely store API keys, tokens, passwords, or connection strings
+for third-party integrations (JIRA, databases, APIs, etc.).
+
+The 'ref' is a unique identifier for this credential (e.g., 'jira_muza',
+'mysql_centerpag'). Use the same ref in memory_store's credential_ref field
+to link a memory to this credential.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        ref: {
+          type: "string",
+          description: "Unique credential reference (e.g., 'jira_muza', 'mysql_centerpag', 'elastic_prod')",
+        },
+        data: {
+          type: "object",
+          description: "Secret credential data to encrypt (e.g., { api_key: '...', email: '...', base_url: '...' })",
+        },
+        metadata: {
+          type: "object",
+          description: "Optional non-secret metadata (e.g., { type: 'api_key', provider: 'atlassian' })",
+        },
+      },
+      required: ["ref", "data"],
+    },
+  },
+  {
+    name: "credential_get",
+    description: `Retrieve a decrypted credential from the vault.
+
+Returns the decrypted credential data for the given reference.
+Only the credential owner (authenticated user) can access their credentials.
+
+Use this when a memory has a credential_ref and you need the actual
+credentials to perform an action (e.g., connect to a database, call an API).`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        ref: {
+          type: "string",
+          description: "Credential reference to retrieve (e.g., 'jira_muza')",
+        },
+      },
+      required: ["ref"],
+    },
+  },
+  {
+    name: "credential_list",
+    description: `List all stored credentials for the current user.
+
+Returns credential metadata (ref, type, created_at) without any secret data.
+Use this to see what integrations have stored credentials.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+    },
+  },
+  {
+    name: "credential_delete",
+    description: `Delete a stored credential from the vault.
+
+Permanently removes the encrypted credential for the given reference.
+This cannot be undone.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        ref: {
+          type: "string",
+          description: "Credential reference to delete (e.g., 'jira_muza')",
+        },
+      },
+      required: ["ref"],
     },
   },
 ];

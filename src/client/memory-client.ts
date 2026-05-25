@@ -120,6 +120,7 @@ export class MemoryClient implements MemoryClientInterface {
     created_by_user_id?: string;
     metadata?: Record<string, unknown>;
     context_id?: string;
+    credential_ref?: string;
   }) {
     const payload: Record<string, unknown> = {
       agent_id: data.agent_id,
@@ -132,6 +133,7 @@ export class MemoryClient implements MemoryClientInterface {
     if (data.user_id) payload.user_id = data.user_id;
     if (data.created_by_user_id) payload.created_by_user_id = data.created_by_user_id;
     if (data.context_id) payload.context_id = data.context_id;
+    if (data.credential_ref) payload.credential_ref = data.credential_ref;
     const response = await this.client.post("/memories", payload);
     return response.data;
   }

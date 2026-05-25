@@ -48,4 +48,30 @@ export class CpClient implements CpClientInterface {
   async deleteUniverse(orgId: string, universeId: string): Promise<void> {
     await this.client.delete(`/api/v1/orgs/${orgId}/universes/${universeId}`);
   }
+
+  // =========================================================================
+  // Credential Vault
+  // =========================================================================
+
+  async storeCredential(integrationRef: string, data: Record<string, unknown>, metadata?: Record<string, unknown>): Promise<any> {
+    const response = await this.client.post(`/api/v1/credentials/${integrationRef}`, {
+      data,
+      metadata: metadata || {},
+    });
+    return response.data;
+  }
+
+  async getCredential(integrationRef: string): Promise<any> {
+    const response = await this.client.get(`/api/v1/credentials/${integrationRef}`);
+    return response.data;
+  }
+
+  async listCredentials(): Promise<any> {
+    const response = await this.client.get(`/api/v1/credentials`);
+    return response.data;
+  }
+
+  async deleteCredential(integrationRef: string): Promise<void> {
+    await this.client.delete(`/api/v1/credentials/${integrationRef}`);
+  }
 }

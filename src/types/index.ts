@@ -64,6 +64,12 @@ export interface CpClientInterface {
   listUniverses(orgId: string): Promise<any>;
   updateUniverse(orgId: string, universeId: string, data: { name?: string; description?: string }): Promise<any>;
   deleteUniverse(orgId: string, universeId: string): Promise<void>;
+
+  // Credential Vault
+  storeCredential(integrationRef: string, data: Record<string, unknown>, metadata?: Record<string, unknown>): Promise<any>;
+  getCredential(integrationRef: string): Promise<any>;
+  listCredentials(): Promise<any>;
+  deleteCredential(integrationRef: string): Promise<void>;
 }
 
 /** Public surface of the MemoryClient used by handlers. */
@@ -86,7 +92,7 @@ export interface MemoryClientInterface {
     agent_id: string; content: string; memory_type?: string; scope?: string;
     importance?: number; user_id?: string;
     created_by_user_id?: string; metadata?: Record<string, unknown>;
-    context_id?: string;
+    context_id?: string; credential_ref?: string;
   }): Promise<any>;
   searchMemories(data: {
     query_text: string; agent_id?: string;
