@@ -866,6 +866,139 @@ const handlers: Record<string, HandlerFn> = {
     };
   },
 
+  async agent_bootstrap(args, { agentClient }) {
+    try {
+      const result = await agentClient.bootstrapAgent(args.agent_id as string);
+
+      const identity = result.identity || {};
+      const runtime = result.runtime || {};
+
+      let formatted = `# Agent Bootstrap\n\n`;
+
+      formatted += `## Identity\n`;
+      if (identity.id) formatted += `ID: ${identity.id}\n`;
+      if (identity.name) formatted += `Name: ${identity.name}\n`;
+      if (identity.role || identity.specialization) formatted += `Role: ${identity.role || identity.specialization}\n`;
+      if (identity.universe_id) formatted += `Universe: ${identity.universe_id}\n`;
+      if (identity.team_id) formatted += `Team: ${identity.team_id}\n`;
+      if (result.persona_version !== undefined) formatted += `Persona Version: ${result.persona_version}\n`;
+      formatted += `\n`;
+
+      if (result.system_prompt) {
+        formatted += `## System Prompt\n${result.system_prompt}\n\n`;
+      }
+
+      formatted += `## Runtime Context\n`;
+
+      const workingMemory = runtime.working_memory || [];
+      if (workingMemory.length > 0) {
+        formatted += `\n### Working Memory (${workingMemory.length})\n`;
+        workingMemory.forEach((item: any, i: number) => {
+          const content = typeof item === "string" ? item : (item.content || JSON.stringify(item));
+          formatted += `${i + 1}. ${content?.slice(0, 200)}\n`;
+        });
+      }
+
+      const recentMemories = runtime.recent_memories || [];
+      if (recentMemories.length > 0) {
+        formatted += `\n### Recent Memories (${recentMemories.length})\n`;
+        recentMemories.forEach((mem: any, i: number) => {
+          formatted += `${i + 1}. [${mem.memory_type || "memory"}] ${mem.content?.slice(0, 150)}\n`;
+        });
+      }
+
+      const skills = runtime.skills || [];
+      if (skills.length > 0) {
+        formatted += `\n### Skills (${skills.length})\n`;
+        skills.forEach((s: any) => {
+          const name = s.skill_name || s.name || s.slug || s;
+          formatted += `- ${name}${s.permission ? ` (${s.permission})` : ""}\n`;
+        });
+      }
+
+      const delegateTargets = runtime.delegate_targets || [];
+      if (delegateTargets.length > 0) {
+        formatted += `\n### Delegate Targets (${delegateTargets.length})\n`;
+        delegateTargets.forEach((t: any) => {
+          const name = t.name || t.agent_name || t.id || t;
+          formatted += `- ${name}${t.specialization ? ` — ${t.specialization}` : ""}${t.id && t.name ? ` (${t.id})` : ""}\n`;
+        });
+      }
+
+      return { content: [{ type: "text", text: formatted }] };
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+  },
+
+  async agent_reorient(args, { memoryClient }) {
+    try {
+      const result = await memoryClient.reorientAgent(
+        args.agent_id as string,
+        args.focus as string | undefined,
+      );
+
+      const identity = result.identity || {};
+
+      let formatted = `# Agent Reorient\n\n`;
+
+      formatted += `## Identity\n`;
+      if (identity.id) formatted += `ID: ${identity.id}\n`;
+      if (identity.name) formatted += `Name: ${identity.name}\n`;
+      if (identity.role || identity.specialization) formatted += `Role: ${identity.role || identity.specialization}\n`;
+      if (result.persona_version !== undefined) formatted += `Persona Version: ${result.persona_version}\n`;
+      formatted += `\n`;
+
+      const workingMemory = result.working_memory || [];
+      if (workingMemory.length > 0) {
+        formatted += `## Working Memory (${workingMemory.length})\n`;
+        workingMemory.forEach((item: any, i: number) => {
+          const content = typeof item === "string" ? item : (item.content || JSON.stringify(item));
+          formatted += `${i + 1}. ${content?.slice(0, 200)}\n`;
+        });
+        formatted += `\n`;
+      }
+
+      if (result.active_task) {
+        const t = result.active_task;
+        formatted += `## Active Task\n`;
+        formatted += `[${t.status || "unknown"}] ${t.title || t.id}${t.id && t.title ? ` (${t.id})` : ""}\n`;
+        if (t.description) formatted += `${t.description?.slice(0, 200)}\n`;
+        formatted += `\n`;
+      }
+
+      const relevantMemories = result.relevant_memories || [];
+      if (relevantMemories.length > 0) {
+        formatted += `## Relevant Memories (${relevantMemories.length})\n`;
+        relevantMemories.forEach((mem: any, i: number) => {
+          formatted += `${i + 1}. [${mem.memory_type || "memory"}] (id: ${mem.id}) ${mem.content?.slice(0, 150)}\n`;
+        });
+        formatted += `\n`;
+      }
+
+      const recentHigh = result.recent_high_importance || [];
+      if (recentHigh.length > 0) {
+        formatted += `## Recent High-Importance (${recentHigh.length})\n`;
+        recentHigh.forEach((mem: any, i: number) => {
+          formatted += `${i + 1}. [${mem.memory_type || "memory"}] (importance: ${mem.importance?.toFixed(2) || "N/A"}) ${mem.content?.slice(0, 150)}\n`;
+        });
+        formatted += `\n`;
+      }
+
+      if (result.config && Object.keys(result.config).length > 0) {
+        formatted += `## Config\n${JSON.stringify(result.config, null, 2)}\n`;
+      }
+
+      return { content: [{ type: "text", text: formatted }] };
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+  },
+
   // ==========================================================================
   // Universe CRUD
   // ==========================================================================
@@ -1271,18 +1404,6 @@ const handlers: Record<string, HandlerFn> = {
       pairs: args.pairs as Array<{question: string; answer: string}>,
       importance: args.importance as number | undefined,
       universe_id: args.universe_id as string | undefined,
-    });
-    return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-    };
-  },
-
-  async training_upload(args, { memoryClient }) {
-    const result = await memoryClient.trainingUpload({
-      file_path: args.file_path as string,
-      filename: args.filename as string || "",
-      universe_id: args.universe_id as string | undefined,
-      importance: args.importance as number | undefined,
     });
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

@@ -88,7 +88,7 @@ On startup the server validates the API key via `/auth/me` and resolves the tena
 | **P2 — CONSULT** | Before any action | `search_with_attention`, `session_context`, `memory_reinforce`, `memory_weaken` | Retrieve, rate, and reinforce relevant memories |
 | **P3 — PLAN** | Planning a task | `memory_store(procedural)`, `working_memory_add`, `stream_capture` | Persist plans, working state, and architectural decisions |
 | **P4 — CAPTURE** | Every 2–3 interactions | `heartbeat_tick`, `working_memory_add`, `memory_store(episodic)`, `stream_capture` | Continuous recording of progress, bugs, patterns |
-| **P5 — LEARN** | New knowledge | `training_teach`, `training_qa`, `training_upload`, `training_stats`, `stream_process`, `sleep_run` | Teach facts/procedures and run consolidation cycles |
+| **P5 — LEARN** | New knowledge | `training_teach`, `training_qa`, `training_stats`, `stream_process`, `sleep_run` | Teach facts/procedures and run consolidation cycles |
 | **P6 — AUDIT** | Maintenance | `consolidation_detect_conflicts`, `consolidation_resolve_conflict`, `consolidation_detect_redundant`, `hierarchy_consolidate` | Detect conflicts, redundancy, and consolidate memories |
 | **P7 — CLOSE** | End of session | `session_summary`, `stream_process`, `memory_store`, `hierarchy_consolidate`, `session_end` | Summarise, promote stream items, persist learnings |
 
@@ -232,7 +232,6 @@ Teach the system explicitly — facts, procedures, Q&A pairs, full documents.
 |------|-------------|
 | `training_teach` | Inject a fact or procedure. `type` ∈ {semantic, procedural}. |
 | `training_qa` | Train with `pairs` of `{question, answer}`. |
-| `training_upload` | Upload a document (`file_path`, `filename`) for chunked ingestion. |
 | `training_stats` | Coverage statistics across the corpus. |
 | `training_gaps` | Detected gaps in knowledge / weakly-covered topics. |
 | `training_recent` | Most recently ingested memories from training. |

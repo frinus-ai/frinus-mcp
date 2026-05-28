@@ -52,6 +52,7 @@ export interface AgentClientInterface {
     forbidden_topics?: string[]; language?: string; specialization?: string;
   }): Promise<any>;
   deleteAgent(agentId: string): Promise<any>;
+  bootstrapAgent(agentId: string): Promise<any>;
   invokeAgent(data: {
     agent_id?: string; agent_name?: string; message: string;
     task_id?: string; context?: Record<string, unknown>; timeout_seconds?: number;
@@ -139,6 +140,7 @@ export interface MemoryClientInterface {
   heartbeatTick(data: {
     agent_id?: string; context_id?: string; session_id?: string;
   }): Promise<any>;
+  reorientAgent(agentId: string, focus?: string): Promise<any>;
   runSleepCycle(phases?: string[]): Promise<any>;
 
   // Consolidation (Active Forgetting)
@@ -184,7 +186,6 @@ export interface MemoryClientInterface {
   // Training
   trainingTeach(data: { content: string; type?: string; importance?: number; universe_id?: string }): Promise<any>;
   trainingQa(data: { pairs: Array<{question: string; answer: string}>; importance?: number; universe_id?: string }): Promise<any>;
-  trainingUpload(data: { file_path: string; filename: string; universe_id?: string; importance?: number }): Promise<any>;
   trainingStats(): Promise<any>;
   trainingGaps(): Promise<any>;
   trainingRecent(data?: { limit?: number }): Promise<any>;

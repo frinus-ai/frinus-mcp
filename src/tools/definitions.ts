@@ -765,6 +765,33 @@ Memories created by the agent are NOT deleted.`,
       required: ["agent_id"],
     },
   },
+  {
+    name: "agent_bootstrap",
+    description: `Bootstrap completo do agente — chame no início da sessão para carregar identidade, system prompt e contexto runtime. O agente thin-client chama isto como regra única de boot.
+
+Retorna identity, system_prompt, runtime (working_memory, recent_memories, skills, delegate_targets) e persona_version em uma única chamada.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_id: { type: "string", description: "UUID of the agent to bootstrap (required)" },
+      },
+      required: ["agent_id"],
+    },
+  },
+  {
+    name: "agent_reorient",
+    description: `Re-fundamentação compacta (heartbeat de reorientação). Chame a cada N alterações ou ao saturar o contexto para o agente se re-orientar sem recarregar tudo.
+
+Retorna identity, working_memory, active_task, relevant_memories, recent_high_importance, persona_version e config. Opcionalmente filtra por um foco específico.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_id: { type: "string", description: "UUID of the agent to reorient (required)" },
+        focus: { type: "string", description: "Optional focus/topic to bias the reorientation toward" },
+      },
+      required: ["agent_id"],
+    },
+  },
   // ==========================================================================
   // Universe CRUD (3)
   // ==========================================================================
@@ -1168,36 +1195,6 @@ Each pair becomes a high-value semantic memory optimized for question matching.`
         },
       },
       required: ["pairs"],
-    },
-  },
-  {
-    name: "training_upload",
-    description: `Upload a document for training.
-
-Processes a local file (PDF, DOCX, TXT, MD, CSV) into memory chunks.
-Each chunk is classified and stored as an individual memory.
-The original file is not persisted — only the extracted knowledge.`,
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        file_path: {
-          type: "string",
-          description: "Absolute path to the file on disk",
-        },
-        filename: {
-          type: "string",
-          description: "Display name for the file (optional, derived from path if omitted)",
-        },
-        universe_id: {
-          type: "string",
-          description: "Optional universe UUID for scoped access",
-        },
-        importance: {
-          type: "number",
-          description: "Base importance score 0-1 (default: 0.7)",
-        },
-      },
-      required: ["file_path"],
     },
   },
   {

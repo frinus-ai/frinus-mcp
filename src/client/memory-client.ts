@@ -308,6 +308,13 @@ export class MemoryClient implements MemoryClientInterface {
     return response.data;
   }
 
+  async reorientAgent(agentId: string, focus?: string) {
+    const payload: Record<string, unknown> = {};
+    if (focus) payload.focus = focus;
+    const response = await this.client.post(`/agents/${agentId}/reorient`, payload);
+    return response.data;
+  }
+
   async runSleepCycle(phases?: string[]) {
     const response = await this.client.post("/sleep/run", {
       phases: phases || ["evaluation", "forgetting", "consolidation", "relevance"],
@@ -515,32 +522,6 @@ export class MemoryClient implements MemoryClientInterface {
     const response = await this.client.post("/training/qa", {
       pairs: data.pairs,
       universe_id: data.universe_id,
-    });
-    return response.data;
-  }
-
-  async trainingUpload(data: { file_path: string; filename: string; universe_id?: string; importance?: number }) {
-    const fs = await import("fs");
-    const path = await import("path");
-
-    const filePath = data.file_path;
-    const filename = data.filename || path.default.basename(filePath);
-
-    // Use Node.js native FormData (available since Node 18)
-    const fileBuffer = fs.readFileSync(filePath);
-    const blob = new Blob([fileBuffer]);
-
-    const formData = new FormData();
-    formData.append("file", blob, filename);
-    if (data.universe_id) {
-      formData.append("universe_id", data.universe_id);
-    }
-    if (data.importance !== undefined) {
-      formData.append("importance", data.importance.toString());
-    }
-
-    const response = await this.client.post("/training/upload", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
     });
     return response.data;
   }

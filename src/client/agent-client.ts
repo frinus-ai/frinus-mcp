@@ -67,6 +67,11 @@ export class AgentClient implements AgentClientInterface {
     return response.data;
   }
 
+  async bootstrapAgent(agentId: string): Promise<any> {
+    const response = await this.client.post(`/api/v1/agents/${agentId}/bootstrap`);
+    return response.data;
+  }
+
   async invokeAgent(data: {
     agent_id?: string;
     agent_name?: string;
