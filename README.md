@@ -28,12 +28,39 @@ The complete protocol set lives in the global `CLAUDE.md` (Frinus organisation),
 
 ## Installation
 
+**End users — no install needed.** Use the published package via `npx` (see config below), or the one-click `.mcpb` extension for Claude Desktop.
+
+**Developers / from source:**
+
 ```bash
 npm install
 npm run build
 ```
 
 The build emits `dist/index.js`, ready to be wired into Claude Desktop / Claude Code.
+
+## Distribution
+
+| Channel | Client | User effort |
+|---------|--------|-------------|
+| **npm** (`npx -y frinus-mcp`) | Claude Code, Cursor, Codex, opencode | Paste config + API key |
+| **`.mcpb` bundle** | Claude Desktop | Double-click + paste API key |
+| **From source** | any | Clone + build + absolute path |
+
+URL defaults point at the Frinus SaaS, so only `FRINUS_API_KEY` is required. Override `MEMORY_SERVICE_URL` / `FRINUS_CP_URL` / `AGENT_SERVICE_URL` for self-hosted instances or local dev.
+
+### Publishing (maintainers)
+
+```bash
+# 1) npm package — powers `npx -y frinus-mcp` everywhere
+npm version <patch|minor|major>
+npm publish                      # prepublishOnly runs the build
+
+# 2) .mcpb bundle — powers the Claude Desktop one-click install
+npm run pack:mcpb                # -> frinus.mcpb
+gh release upload v<version> frinus.mcpb --repo frinus-ai/frinus-mcp --clobber
+# Frontend points at: releases/latest/download/frinus.mcpb
+```
 
 ## Environment Variables
 
@@ -56,7 +83,29 @@ FRINUS_API_KEY=sk-frinus-...
 
 ## Claude Desktop / Claude Code Configuration
 
-Add the server to your MCP client configuration:
+Add the server to your MCP client configuration. **Recommended (npx, no install):**
+
+```json
+{
+  "mcpServers": {
+    "frinus": {
+      "command": "npx",
+      "args": ["-y", "frinus-mcp@latest"],
+      "env": {
+        "FRINUS_API_KEY": "sk-frinus-..."
+      }
+    }
+  }
+}
+```
+
+Claude Code one-liner:
+
+```bash
+claude mcp add frinus --env FRINUS_API_KEY=sk-frinus-... -- npx -y frinus-mcp@latest
+```
+
+From source (developers), point at the built entry and override URLs as needed:
 
 ```json
 {
@@ -66,9 +115,9 @@ Add the server to your MCP client configuration:
       "args": ["/absolute/path/to/mcp/dist/index.js"],
       "env": {
         "FRINUS_API_KEY": "sk-frinus-...",
-        "MEMORY_SERVICE_URL": "https://frinus-memory.rdxsec.com.br",
-        "FRINUS_CP_URL": "https://frinus-api.rdxsec.com.br",
-        "AGENT_SERVICE_URL": "https://frinus-agents.rdxsec.com.br"
+        "MEMORY_SERVICE_URL": "http://localhost:8001",
+        "FRINUS_CP_URL": "http://localhost:8000",
+        "AGENT_SERVICE_URL": "http://localhost:8002"
       }
     }
   }

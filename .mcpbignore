@@ -1,0 +1,18 @@
+# Source & dev-only — the bundle ships compiled dist/ + prod node_modules only
+src/
+scripts/
+*.ts
+tsconfig.json
+.gitignore
+.dockerignore
+Dockerfile
+README.md
+package-lock.json
+.mcpb-build/
+*.mcpb
+
+# Dev dependencies are stripped during pack (npm install --omit=dev in staging)
+node_modules/.cache/
+node_modules/typescript/
+node_modules/tsx/
+node_modules/@types/

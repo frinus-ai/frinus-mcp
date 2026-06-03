@@ -1,0 +1,75 @@
+{
+  "manifest_version": "0.2",
+  "name": "frinus",
+  "display_name": "Frinus — Memória Cognitiva",
+  "version": "3.1.0",
+  "description": "Memória cognitiva de longo prazo para o Claude (φρήν + νοῦς). 70 ferramentas de memória, sessões, agentes e conhecimento.",
+  "long_description": "O Frinus dá ao Claude memória de longo prazo, identidade e inteligência persistente entre conversas. Conecta o Claude Desktop à plataforma Frinus (Memory Engine, Control Plane e Agent Service) via MCP. Basta colar sua chave de API pessoal — nada para instalar ou compilar.",
+  "author": {
+    "name": "Frinus",
+    "url": "https://frinus.rdxsec.com.br"
+  },
+  "homepage": "https://frinus.rdxsec.com.br",
+  "documentation": "https://github.com/frinus-ai/frinus-mcp",
+  "support": "https://github.com/frinus-ai/frinus-mcp/issues",
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "FRINUS_API_KEY": "${user_config.api_key}",
+        "MEMORY_SERVICE_URL": "${user_config.memory_url}",
+        "FRINUS_CP_URL": "${user_config.cp_url}",
+        "AGENT_SERVICE_URL": "${user_config.agent_url}"
+      }
+    }
+  },
+  "user_config": {
+    "api_key": {
+      "type": "string",
+      "title": "Chave de API Frinus",
+      "description": "Sua chave pessoal (sk-frinus-...). Gere em frinus.rdxsec.com.br → Configurações → API Keys.",
+      "sensitive": true,
+      "required": true
+    },
+    "memory_url": {
+      "type": "string",
+      "title": "Memory Engine URL (avançado)",
+      "description": "Deixe o padrão, exceto se usar uma instância própria do Frinus.",
+      "default": "https://frinus-memory.rdxsec.com.br",
+      "required": false
+    },
+    "cp_url": {
+      "type": "string",
+      "title": "Control Plane URL (avançado)",
+      "description": "Deixe o padrão, exceto se usar uma instância própria do Frinus.",
+      "default": "https://frinus-api.rdxsec.com.br",
+      "required": false
+    },
+    "agent_url": {
+      "type": "string",
+      "title": "Agent Service URL (avançado)",
+      "description": "Deixe o padrão, exceto se usar uma instância própria do Frinus.",
+      "default": "https://frinus-agents.rdxsec.com.br",
+      "required": false
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
+  "keywords": [
+    "memory",
+    "cognitive",
+    "rag",
+    "frinus",
+    "long-term-memory",
+    "agents"
+  ],
+  "license": "SEE LICENSE IN repository"
+}

@@ -1,16 +1,49 @@
 {
-  "name": "frinus",
+  "name": "frinus-mcp",
   "version": "3.1.0",
-  "description": "Frinus - MCP Server for Cognitive Memory",
+  "description": "Frinus - MCP Server for Cognitive Memory (φρήν + νοῦς). Long-term memory, sessions, agents and knowledge for Claude and any MCP client.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "frinus-mcp": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "manifest.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "pack:mcpb": "./scripts/pack-mcpb.sh",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/frinus-ai/frinus-mcp.git"
+  },
+  "homepage": "https://frinus.rdxsec.com.br",
+  "bugs": {
+    "url": "https://github.com/frinus-ai/frinus-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "frinus",
+    "memory",
+    "cognitive-memory",
+    "long-term-memory",
+    "rag",
+    "agents",
+    "claude"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

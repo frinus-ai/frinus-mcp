@@ -1,0 +1,69 @@
+name: Release
+
+# Publishes the Frinus MCP on every version tag:
+#   1) npm package  -> powers `npx -y frinus-mcp@latest` (Claude Code, Cursor, Codex)
+#   2) .mcpb bundle -> attached to the GitHub Release for the Claude Desktop one-click install
+#
+# Trigger:
+#   npm version <patch|minor|major>   # creates the vX.Y.Z tag
+#   git push --follow-tags
+#
+# Required repo secret:
+#   NPM_TOKEN  - npm automation token with publish rights to "frinus-mcp"
+#                (Settings -> Secrets and variables -> Actions)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # create the GitHub Release + upload the .mcpb asset
+  id-token: write # npm publish --provenance (OIDC)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify tag matches package.json version
+        run: |
+          PKG_VERSION="v$(node -p "require('./package.json').version")"
+          TAG="${GITHUB_REF_NAME}"
+          echo "package.json: ${PKG_VERSION} | tag: ${TAG}"
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${PKG_VERSION}" != "${TAG}" ]; then
+            echo "::error::Tag ${TAG} does not match package.json version ${PKG_VERSION}"
+            exit 1
+          fi
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Pack .mcpb bundle
+        run: npm run pack:mcpb
+
+      - name: Create GitHub Release with .mcpb
+        uses: softprops/action-gh-release@v2
+        with:
+          files: frinus.mcpb
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

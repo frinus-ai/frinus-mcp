@@ -34,9 +34,11 @@ import { InteractionCapture } from "./capture/interaction-capture.js";
 import { TOOLS } from "./tools/definitions.js";
 import { dispatchTool } from "./tools/handlers.js";
 
-const MEMORY_SERVICE_URL = process.env.MEMORY_SERVICE_URL || "http://localhost:8001";
-const CP_URL = process.env.FRINUS_CP_URL || "http://localhost:8000";
-const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || "http://localhost:8002";
+// Defaults point at the Frinus SaaS so `npx -y frinus-mcp` works with only an
+// API key. Local development overrides these via env (MEMORY_SERVICE_URL, etc.).
+const MEMORY_SERVICE_URL = process.env.MEMORY_SERVICE_URL || "https://frinus-memory.rdxsec.com.br";
+const CP_URL = process.env.FRINUS_CP_URL || "https://frinus-api.rdxsec.com.br";
+const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || "https://frinus-agents.rdxsec.com.br";
 
 // Main server
 async function main() {
