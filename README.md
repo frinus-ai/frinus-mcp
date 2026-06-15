@@ -307,7 +307,7 @@ Reusable behaviours assigned to agents.
 | `skill_remove` | Detach a skill from an agent. |
 | `skill_agent_list` | List the skills owned by a given agent. |
 
-### Credential Vault (4) + `frinus-cred`
+### Credential Vault (5) — `credential_exec` broker
 
 Encrypted credentials stored in the Control Plane, referenced from memories via
 `credential_ref`.
@@ -315,35 +315,38 @@ Encrypted credentials stored in the Control Plane, referenced from memories via
 | Tool | Description |
 |------|-------------|
 | `credential_store` | Store an encrypted credential under a ref (e.g. `mysql_x`). |
-| `credential_get` | Resolve a credential **by reference, never by value** — returns only non-secret metadata + `frinus-cred` snippets. |
+| `credential_get` | Inspect **non-secret metadata only** (host/user/db/port + the env vars `credential_exec` will inject). Never returns the value. |
+| `credential_exec` | **Run a command with the credential injected into the child process ENV.** Returns only stdout/stderr/exit_code — the secret never reaches the model, screen, or disk. |
 | `credential_list` | List stored credential refs (no secret data). |
 | `credential_delete` | Delete a stored credential. |
 
-**Secret-handling principle — by reference, never by value.** `credential_get`
-never returns a secret value to the model: no plaintext, no temp files. It returns
-host/user/db/port metadata plus ready-to-use snippets that reference the secret by
-name through the companion CLI **`frinus-cred`**, resolved out of band (process
-memory only) at execution time:
+**Secret-handling principle — server-side broker, never by value.** The model
+never receives a secret value: no plaintext, no temp files, no shell snippets that
+carry the secret. To *use* a credential you call **`credential_exec`**. The MCP
+server (already running locally via `npx -y frinus-mcp@latest`) fetches the
+credential from the vault, injects its fields into the **environment** of a child
+process — never into argv, never into any text the model sees — runs the command
+with `shell:false` (no shell injection), and returns only the output.
 
-```bash
-export MYSQL_PWD="$(frinus-cred <ref> password)"
-mysql --defaults-extra-file=<(frinus-cred <ref> --as=mysql-cnf) -e 'SELECT 1'
-PGPASSFILE=<(frinus-cred <ref> --as=pgpass) psql -c 'SELECT 1'
-source <(frinus-cred <ref> --as=env)   # export every field; value never printed
+```jsonc
+// MYSQL_PWD / MYSQL_USER / MYSQL_HOST are pre-injected → standard clients just work
+credential_exec(ref="mysql_prod", argv=["mysql", "-e", "SELECT 1"])
+credential_exec(ref="pg_prod",    argv=["psql",  "-c", "SELECT 1"])
+
+// For anything else, read the injected vars inside an explicit shell:
+credential_exec(ref="jira_x", argv=["sh","-c",
+  "curl -sS -H \"Authorization: Bearer $CRED_TOKEN\" \"$CRED_BASE_URL/whoami\""])
 ```
 
-`frinus-cred` **refuses to run when stdout is a terminal** (isatty) — you must
-capture it via `$(...)` or `<(...)`, which makes it structurally impossible to
-print a secret to the screen. It writes only to stdout (zero files on disk).
-
-It is shipped in the same npm package (`bin: frinus-cred`), so `npx -y frinus-mcp`
-puts both `frinus-mcp` and `frinus-cred` on `PATH` (a global `npm i -g frinus-mcp`
-installs both into the npm bin dir). It reuses the **same auth as the MCP**:
-`FRINUS_CP_URL` + `FRINUS_API_KEY` (header `X-API-Key`, endpoint
-`GET /api/v1/credentials/<ref>`). If those env vars are not present in the shell,
-it reads them from a `0600` config file at `$FRINUS_CRED_CONFIG` or
-`~/.frinus/cred.env` (owner-only; group/other-readable files are refused).
-Formats: `raw` (default), `env`, `mysql-cnf`, `pgpass`.
+Injected env vars (when present in the credential): password/secret/token →
+`MYSQL_PWD`, `PGPASSWORD`, `CRED_PASSWORD`; `user`/`username` → `CRED_USER`,
+`MYSQL_USER`, `PGUSER`; `host` → `CRED_HOST`, `MYSQL_HOST`, `PGHOST`; `port` →
+`CRED_PORT`, `MYSQL_TCP_PORT`, `PGPORT`; `database` → `CRED_DATABASE`,
+`PGDATABASE`; any other scalar → `CRED_<UPPER_SNAKE>` (e.g. `base_url` →
+`CRED_BASE_URL`). `argv` must be an array of strings (no shell command string;
+use `["sh","-c","..."]` if you really need a shell). 30s timeout, 256 KiB output
+cap. Everything ships in the npm package — **the user installs nothing, edits no
+PATH, and runs no extra command**; an up-to-date MCP is all that's required.
 
 ## Memory Types
 

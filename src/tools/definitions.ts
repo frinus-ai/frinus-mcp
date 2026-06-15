@@ -1507,37 +1507,82 @@ to link a memory to this credential.`,
   },
   {
     name: "credential_get",
-    description: `Resolve a credential from the vault — BY REFERENCE, never by value.
+    description: `Inspect a credential's NON-SECRET metadata — never its value.
 
-This tool returns ONLY non-secret metadata (host/user/db/port) plus ready-to-use
-command snippets that reference the credential BY NAME through the 'frinus-cred'
-wrapper. The secret VALUE is NEVER returned in text, so it can never be echoed
-inline into a shell command and leaked on a screen share. The value is resolved
-out of band, in process memory only, at execution time — never on disk.
+This tool returns ONLY non-secret metadata (host/user/db/port), the names of the
+secret fields, and the names of the environment variables that 'credential_exec'
+will inject. The secret VALUE is NEVER returned, so it can never be echoed inline
+into a shell command and leaked on a screen share.
 
-The snippets use shell expansion / process substitution so the secret flows
-directly into the consuming process and is never rendered on screen:
-  export MYSQL_PWD="$(frinus-cred <ref> password)"
-  mysql --defaults-extra-file=<(frinus-cred <ref> --as=mysql-cnf) -e 'SELECT 1'
-  PGPASSFILE=<(frinus-cred <ref> --as=pgpass) psql -c 'SELECT 1'
+To actually USE the credential (connect to a DB, call an API), do NOT request the
+value — call 'credential_exec'. It fetches the secret on the server side, injects
+it into the child process environment, runs your command, and returns only the
+output. The secret never reaches you, the screen, or disk.
 
-NEVER write a secret value directly into a command string (e.g.
-'export MYSQL_PWD=<the-actual-password>'). Always reference it via frinus-cred,
-captured with $(...) or <(...). 'frinus-cred' refuses to print to a terminal, so
-running it bare (without $(...) / <(...)) will error — that is by design.
-
-Only the credential owner (authenticated API key) can access their credentials.
-Use this when a memory has a credential_ref and you need to perform an action
-(e.g., connect to a database, call an API).`,
+Only the credential owner (authenticated API key) can access their credentials.`,
     inputSchema: {
       type: "object" as const,
       properties: {
         ref: {
           type: "string",
-          description: "Credential reference to retrieve (e.g., 'jira_muza')",
+          description: "Credential reference to inspect (e.g., 'jira_muza')",
         },
       },
       required: ["ref"],
+    },
+  },
+  {
+    name: "credential_exec",
+    description: `Run a command with a vault credential injected into its environment — the secret NEVER reaches you.
+
+This is the secure way to USE a stored credential. The MCP server (running locally
+via npx) fetches the credential from the vault, injects its fields into the
+ENVIRONMENT of a child process (never into argv, never into any text you see),
+runs your command with shell:false (no shell injection), and returns ONLY
+stdout, stderr, and exit_code. The secret value is never returned to you, never
+printed on screen, never logged, and never written to disk.
+
+Injected environment variables (when present in the credential):
+  - password/secret/token field -> MYSQL_PWD, PGPASSWORD, CRED_PASSWORD
+  - user / username             -> CRED_USER, MYSQL_USER, PGUSER
+  - host / hostname             -> CRED_HOST, MYSQL_HOST, PGHOST
+  - port                        -> CRED_PORT, MYSQL_TCP_PORT, PGPORT
+  - database / db / dbname      -> CRED_DATABASE, PGDATABASE
+  - any other scalar field      -> CRED_<UPPER_SNAKE_NAME> (e.g. base_url -> CRED_BASE_URL)
+
+Because MYSQL_PWD / PGPASSWORD etc. are standard, common clients pick them up
+with no flags:
+  credential_exec(ref="mysql_prod", argv=["mysql", "-e", "SELECT 1"])
+  credential_exec(ref="pg_prod",    argv=["psql", "-c", "SELECT 1"])
+
+For anything else, read the injected vars inside an explicit shell — the secret
+is expanded inside the child, never in text you author:
+  credential_exec(ref="jira_x", argv=["sh", "-c",
+    "curl -sS -H \\"Authorization: Bearer $CRED_TOKEN\\" \\"$CRED_BASE_URL/whoami\\""])
+
+RULES:
+  - 'argv' MUST be an array of strings (program first, then args). A shell command
+    string is NOT accepted; pass ["sh","-c","..."] only when you genuinely need a shell.
+  - NEVER put a secret value in argv or ask for the value — there is no path to it.
+  - 30s timeout; output capped at 256 KiB per stream.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        ref: {
+          type: "string",
+          description: "Credential reference to use (e.g., 'mysql_centerpag', 'jira_muza').",
+        },
+        argv: {
+          type: "array",
+          items: { type: "string" },
+          description: "Command as an array: program first, then each argument as a separate string. E.g. [\"mysql\", \"-e\", \"SELECT 1\"]. NOT a shell string.",
+        },
+        stdin: {
+          type: "string",
+          description: "Optional data to pipe to the command's stdin (e.g. a SQL script).",
+        },
+      },
+      required: ["ref", "argv"],
     },
   },
   {

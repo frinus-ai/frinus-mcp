@@ -5,35 +5,189 @@
  * and return formatted MCP tool results.
  */
 import axios from "axios";
+import { spawn } from "node:child_process";
 import type { ToolResult, ToolArgs, ToolHandlerDeps } from "../types/index.js";
 import { getResolvedTenantOrgId } from "../client/memory-client.js";
 
 // ---------------------------------------------------------------------------
-// Credential delivery — by reference, never by value
+// Credential delivery — server-side broker, never by value
 // ---------------------------------------------------------------------------
 // SECURITY: agents running in Claude Code render the full bash command string
 // on screen. If a secret value ever enters the agent's text context, the agent
 // can (and historically did) splice it inline into a command like
 // `export MYSQL_PWD='...'`, leaking it in plaintext during screen sharing.
 //
-// The structural fix is to NEVER return the secret value to the model at all.
-// credential_get returns only non-sensitive metadata (host/user/db/port) plus
-// ready-to-use snippets that reference the secret BY NAME via the `frinus-cred`
-// wrapper, resolved out of band through shell expansion / process substitution
-// at execution time:
+// The structural fix is to NEVER return the secret value to the model at all,
+// and — going one step further — to never even require the agent to hold the
+// secret as a shell-side reference. The MCP server already runs locally (via
+// `npx -y frinus-mcp@latest`) and already fetches the credential from the
+// Control Plane vault. So the broker lives INSIDE this process as a native
+// tool: `credential_exec`.
 //
-//     export MYSQL_PWD="$(frinus-cred <ref> password)"
-//     mysql --defaults-extra-file=<(frinus-cred <ref> --as=mysql-cnf) -e 'SELECT 1'
-//     PGPASSFILE=<(frinus-cred <ref> --as=pgpass) psql -c 'SELECT 1'
+// `credential_exec` fetches the credential, injects the fields into the ENV of
+// a child process (never into argv, never into the model's text), spawns the
+// command with shell:false, and returns ONLY stdout/stderr/exit_code. The
+// secret never enters the tool result, is never logged, and never touches disk.
+// Everything ships in the npm package — the user installs nothing, edits no
+// PATH, and runs no extra command.
 //
-// The secret value never enters the tool result text (nothing to echo) and is
-// never written to disk (frinus-cred streams to stdout only, and refuses a TTY).
+// `credential_get` no longer surfaces any secret-bearing snippet: it returns
+// non-sensitive metadata only and points the agent at `credential_exec`.
 
 /** Keys (case-insensitive) treated as sensitive when surfacing metadata. */
 const SECRET_KEY_RE = /pass(word|wd)?|secret|token|api[_-]?key|private[_-]?key|credential/i;
 
 function looksLikePassword(key: string): boolean {
   return SECRET_KEY_RE.test(key);
+}
+
+// ---------------------------------------------------------------------------
+// credential_exec internals
+// ---------------------------------------------------------------------------
+const CRED_EXEC_TIMEOUT_MS = 30_000;
+const CRED_EXEC_MAX_OUTPUT = 256 * 1024; // 256 KiB cap per stream
+
+/**
+ * Map credential fields onto environment variables for the child process.
+ * The secret value flows ONLY into this env map — never into argv, never into
+ * any returned/ logged text.
+ *
+ *  - Password-like field  -> MYSQL_PWD, PGPASSWORD, CRED_PASSWORD
+ *  - user/username        -> CRED_USER (+ MYSQL_USER, PGUSER)
+ *  - host/hostname        -> CRED_HOST (+ MYSQL_HOST, PGHOST)
+ *  - port                 -> CRED_PORT (+ MYSQL_TCP_PORT, PGPORT)
+ *  - database/db/dbname   -> CRED_DATABASE (+ PGDATABASE)
+ *  - any other scalar     -> CRED_<UPPER_SNAKE> (e.g. base_url -> CRED_BASE_URL)
+ */
+function buildCredentialEnv(data: Record<string, unknown>): Record<string, string> {
+  const env: Record<string, string> = {};
+  const isScalar = (v: unknown): v is string | number | boolean =>
+    typeof v === "string" || typeof v === "number" || typeof v === "boolean";
+
+  let passwordSet = false;
+  let userSet = false;
+  let hostSet = false;
+  let portSet = false;
+  let dbSet = false;
+
+  for (const [k, v] of Object.entries(data)) {
+    if (!isScalar(v)) continue;
+    const val = String(v);
+    const lk = k.toLowerCase();
+
+    // Generic CRED_<NAME> for every scalar field (raw key, upper-snaked).
+    const credKey = "CRED_" + k.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    env[credKey] = val;
+
+    if (!passwordSet && looksLikePassword(k)) {
+      env.CRED_PASSWORD = val;
+      env.MYSQL_PWD = val;
+      env.PGPASSWORD = val;
+      passwordSet = true;
+    } else if (!userSet && (lk === "user" || lk === "username")) {
+      env.CRED_USER = val;
+      env.MYSQL_USER = val;
+      env.PGUSER = val;
+      userSet = true;
+    } else if (!hostSet && (lk === "host" || lk === "hostname")) {
+      env.CRED_HOST = val;
+      env.MYSQL_HOST = val;
+      env.PGHOST = val;
+      hostSet = true;
+    } else if (!portSet && lk === "port") {
+      env.CRED_PORT = val;
+      env.MYSQL_TCP_PORT = val;
+      env.PGPORT = val;
+      portSet = true;
+    } else if (!dbSet && (lk === "database" || lk === "db" || lk === "dbname")) {
+      env.CRED_DATABASE = val;
+      env.PGDATABASE = val;
+      dbSet = true;
+    }
+  }
+  return env;
+}
+
+interface CredExecResult {
+  stdout: string;
+  stderr: string;
+  exit_code: number | null;
+  signal: string | null;
+  timed_out: boolean;
+  truncated: boolean;
+}
+
+/**
+ * Spawn `argv` (program + args, shell:false) with the credential env injected
+ * on top of a minimal copy of the current env. Captures stdout/stderr with a
+ * size cap and a hard timeout. Never throws on a non-zero exit; throws only on
+ * spawn failure (e.g. command not found).
+ */
+function runWithCredEnv(
+  argv: string[],
+  credEnv: Record<string, string>,
+  stdin?: string,
+): Promise<CredExecResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(argv[0], argv.slice(1), {
+      shell: false,
+      env: { ...process.env, ...credEnv },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let truncated = false;
+    let timedOut = false;
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, CRED_EXEC_TIMEOUT_MS);
+
+    const append = (buf: string, chunk: Buffer): string => {
+      if (buf.length >= CRED_EXEC_MAX_OUTPUT) {
+        truncated = true;
+        return buf;
+      }
+      const next = buf + chunk.toString("utf8");
+      if (next.length > CRED_EXEC_MAX_OUTPUT) {
+        truncated = true;
+        return next.slice(0, CRED_EXEC_MAX_OUTPUT);
+      }
+      return next;
+    };
+
+    child.stdout.on("data", (c: Buffer) => { stdout = append(stdout, c); });
+    child.stderr.on("data", (c: Buffer) => { stderr = append(stderr, c); });
+
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    child.on("close", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({
+        stdout,
+        stderr,
+        exit_code: code,
+        signal: signal ?? null,
+        timed_out: timedOut,
+        truncated,
+      });
+    });
+
+    if (typeof stdin === "string") {
+      child.stdin.write(stdin);
+    }
+    child.stdin.end();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1635,54 +1789,59 @@ const handlers: Record<string, HandlerFn> = {
       const result = await cpClient.getCredential(ref);
       const data = (result ?? {}) as Record<string, unknown>;
 
-      // BY REFERENCE, NEVER BY VALUE: we do NOT return any secret value here.
-      // We surface only non-sensitive metadata (host/user/db/port) plus
-      // ready-to-use snippets that reference the credential by name through the
-      // `frinus-cred` wrapper. The secret is resolved out of band, in process
-      // memory only, at execution time — never on screen, never on disk.
+      // SERVER-SIDE BROKER MODEL: we never return any secret value here, and we
+      // no longer emit shell snippets that handle the secret either. We surface
+      // ONLY non-sensitive metadata (host/user/db/port) plus the names of the
+      // secret fields and the env vars they will populate, and we instruct the
+      // agent to run the command through `credential_exec`, which injects the
+      // secret into the child process env on the server side — the value never
+      // reaches the agent, the screen, or disk.
       const nonSecret: Record<string, unknown> = {};
       const secretFields: string[] = [];
+      const credEnvKeys = Object.keys(buildCredentialEnv(data)).sort();
       for (const [k, v] of Object.entries(data)) {
         if (typeof v === "object" && v !== null) continue;
         if (looksLikePassword(k)) secretFields.push(k);
         else nonSecret[k] = v;
       }
 
-      // Detect whether this looks like a DB credential (for DB-specific snippets).
       const hasUser = "user" in data || "username" in data;
-      const passKey = secretFields[0];
-      const isDbLike = hasUser && passKey !== undefined;
+      const isDbLike = hasUser && secretFields.length > 0;
 
       const lines: string[] = [];
-      lines.push(`Credential '${ref}' resolved (metadata only — NO secret value shown).`);
+      lines.push(`Credential '${ref}' resolved (metadata only — NO secret value is ever returned).`);
       lines.push(
-        "The secret is fetched by reference at execution time via the `frinus-cred` " +
-          "wrapper. It never enters this text and is never written to disk.",
+        "To USE this credential, call the `credential_exec` tool. It fetches the " +
+          "secret on the server side, injects it into the child process environment, " +
+          "runs your command, and returns ONLY stdout/stderr/exit_code. The secret " +
+          "never enters this text, your context, the screen, or disk.",
       );
       lines.push("");
       if (Object.keys(nonSecret).length > 0) {
         lines.push("Non-secret metadata: " + JSON.stringify(nonSecret));
       }
       if (secretFields.length > 0) {
-        lines.push(`Secret fields (resolve by name, do NOT request the value): ${secretFields.join(", ")}`);
+        lines.push(`Secret fields (handled server-side only): ${secretFields.join(", ")}`);
       }
+      lines.push(`Env vars injected into the child by credential_exec: ${credEnvKeys.join(", ")}`);
       lines.push("");
-      lines.push(
-        "USE `frinus-cred` VIA $(...) OR <(...) — never paste a secret value inline.",
-      );
+      lines.push("DO NOT request, print, or inline the secret value. Use credential_exec:");
       lines.push("");
-      lines.push("# Single secret field into an env var (e.g. a password):");
-      lines.push(`export MYSQL_PWD="$(frinus-cred ${ref} ${passKey ?? "password"})"`);
-      lines.push("");
-      lines.push("# All fields as env exports (sourced into the current shell, value never printed):");
-      lines.push(`source <(frinus-cred ${ref} --as=env)`);
       if (isDbLike) {
+        lines.push("# MySQL (MYSQL_PWD / MYSQL_USER / MYSQL_HOST are pre-injected):");
+        lines.push(
+          `credential_exec(ref="${ref}", argv=["mysql", "-e", "SELECT 1"])`,
+        );
         lines.push("");
-        lines.push("# MySQL (process substitution — no password on the command line/screen):");
-        lines.push(`mysql --defaults-extra-file=<(frinus-cred ${ref} --as=mysql-cnf) -e 'SELECT 1'`);
-        lines.push("");
-        lines.push("# Postgres (.pgpass via process substitution):");
-        lines.push(`PGPASSFILE=<(frinus-cred ${ref} --as=pgpass) psql -c 'SELECT 1'`);
+        lines.push("# Postgres (PGPASSWORD / PGUSER / PGHOST / PGDATABASE are pre-injected):");
+        lines.push(
+          `credential_exec(ref="${ref}", argv=["psql", "-c", "SELECT 1"])`,
+        );
+      } else {
+        lines.push("# Read an injected field inside the command (here CRED_API_KEY, etc.):");
+        lines.push(
+          `credential_exec(ref="${ref}", argv=["sh", "-c", "curl -sS -H \\"Authorization: Bearer $CRED_TOKEN\\" \\"$CRED_BASE_URL/whoami\\""])`,
+        );
       }
 
       return {
@@ -1701,6 +1860,95 @@ const handlers: Record<string, HandlerFn> = {
       if (apiErr) return apiErr;
       throw error;
     }
+  },
+
+  // credential_exec — server-side broker. Runs a command with the credential
+  // injected into the child process ENV. Returns ONLY stdout/stderr/exit_code.
+  // The secret value never enters the returned text and is never logged.
+  async credential_exec(args, { cpClient }) {
+    const ref = args.ref as string;
+    const argv = args.argv as unknown;
+    const stdin = args.stdin as string | undefined;
+
+    // Validate argv: must be a non-empty array of strings (program + args).
+    // We deliberately do NOT accept a shell command string — spawn runs with
+    // shell:false to avoid shell injection. The caller can still opt into a
+    // shell explicitly with argv ["sh","-c","..."], which is their choice.
+    if (!Array.isArray(argv) || argv.length === 0 || !argv.every((a) => typeof a === "string")) {
+      return {
+        content: [{
+          type: "text",
+          text: "argv must be a non-empty array of strings (program + args), e.g. [\"mysql\", \"-e\", \"SELECT 1\"]. A shell command string is not accepted (use [\"sh\", \"-c\", \"...\"] if you really need a shell).",
+        }],
+        isError: true,
+      };
+    }
+    if (stdin !== undefined && typeof stdin !== "string") {
+      return {
+        content: [{ type: "text", text: "stdin, if provided, must be a string." }],
+        isError: true,
+      };
+    }
+
+    let credData: Record<string, unknown>;
+    try {
+      const result = await cpClient.getCredential(ref);
+      credData = (result ?? {}) as Record<string, unknown>;
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        return {
+          content: [{ type: "text", text: `No credential found for ref '${ref}'` }],
+          isError: true,
+        };
+      }
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+
+    if (Object.keys(credData).length === 0) {
+      return {
+        content: [{ type: "text", text: `Credential '${ref}' has no fields to inject.` }],
+        isError: true,
+      };
+    }
+
+    const credEnv = buildCredentialEnv(credData);
+
+    let res: CredExecResult;
+    try {
+      res = await runWithCredEnv(argv as string[], credEnv, stdin);
+    } catch (err: any) {
+      // Spawn failure (e.g. ENOENT command not found). The error message is
+      // about the program/argv, which the caller already provided — no secret.
+      return {
+        content: [{
+          type: "text",
+          text: `Failed to execute command: ${err?.code ? err.code + " " : ""}${err?.message ?? String(err)}`,
+        }],
+        isError: true,
+      };
+    }
+
+    // Return ONLY non-secret execution results. The credential value lived only
+    // in the child's env; it is not part of stdout/stderr unless the invoked
+    // command itself chose to print it (the caller's responsibility).
+    const summary = [
+      `exit_code: ${res.exit_code}`,
+      res.signal ? `signal: ${res.signal}` : null,
+      res.timed_out ? "timed_out: true (killed after 30s)" : null,
+      res.truncated ? "truncated: true (output capped at 256 KiB)" : null,
+      "",
+      "--- stdout ---",
+      res.stdout.length ? res.stdout : "(empty)",
+      "--- stderr ---",
+      res.stderr.length ? res.stderr : "(empty)",
+    ].filter((l) => l !== null).join("\n");
+
+    return {
+      content: [{ type: "text", text: summary }],
+      isError: res.exit_code !== 0,
+    };
   },
 
   async credential_list(_args, { cpClient }) {
