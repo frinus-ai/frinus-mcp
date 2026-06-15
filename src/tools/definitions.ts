@@ -1507,11 +1507,19 @@ to link a memory to this credential.`,
   },
   {
     name: "credential_get",
-    description: `Retrieve a decrypted credential from the vault.
+    description: `Retrieve a credential from the vault — SCREEN-SHARE SAFE by default.
 
-Returns the decrypted credential data for the given reference.
+By default the secret is materialized to chmod-600 temp files and this tool
+returns ONLY the file paths plus ready-to-use, secret-free command snippets
+(e.g. 'mysql --defaults-extra-file=<path>', 'set -a; source <path>; set +a',
+'PGPASSFILE=<path> psql'). The secret VALUE is never returned in text, so it
+can never be echoed inline into a shell command and leaked on a screen share.
+
+NEVER write a secret value directly into a command string (e.g.
+'export MYSQL_PWD=...'). Always use the file-based snippet this tool returns.
+Delete the temp files when done (the snippet includes the rm command).
+
 Only the credential owner (authenticated user) can access their credentials.
-
 Use this when a memory has a credential_ref and you need the actual
 credentials to perform an action (e.g., connect to a database, call an API).`,
     inputSchema: {
@@ -1520,6 +1528,14 @@ credentials to perform an action (e.g., connect to a database, call an API).`,
         ref: {
           type: "string",
           description: "Credential reference to retrieve (e.g., 'jira_muza')",
+        },
+        reveal: {
+          type: "boolean",
+          description:
+            "DANGEROUS. If true, returns the plaintext secret instead of " +
+            "materializing it to a file. Only use for non-shell consumers " +
+            "(e.g. building an HTTP header) where the value is never echoed. " +
+            "Default false (secure file-based delivery).",
         },
       },
       required: ["ref"],

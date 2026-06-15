@@ -5,8 +5,98 @@
  * and return formatted MCP tool results.
  */
 import axios from "axios";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomBytes } from "node:crypto";
 import type { ToolResult, ToolArgs, ToolHandlerDeps } from "../types/index.js";
 import { getResolvedTenantOrgId } from "../client/memory-client.js";
+
+// ---------------------------------------------------------------------------
+// Secret materialization (screen-share safe credential delivery)
+// ---------------------------------------------------------------------------
+// SECURITY: agents running in Claude Code render the full bash command string
+// on screen. If a secret value enters the agent's text context, the agent can
+// (and does) splice it inline into a command like `export MYSQL_PWD='...'`,
+// leaking it in plaintext during screen sharing.
+//
+// To make leakage *structurally impossible*, credential_get materializes the
+// secret to chmod-600 temp files and returns ONLY the file paths plus
+// ready-to-use, secret-free command snippets. The secret value never appears
+// in the tool result text, so the model has nothing to echo.
+
+const SECRET_DIR = join(tmpdir(), "frinus-secrets");
+
+interface MaterializedSecret {
+  envFile: string;
+  mysqlDefaultsFile?: string;
+  pgpassFile?: string;
+  fields: string[];
+}
+
+/** Keys (case-insensitive) treated as sensitive when building snippets. */
+const SECRET_KEY_RE = /pass(word|wd)?|secret|token|api[_-]?key|private[_-]?key|credential/i;
+
+function looksLikePassword(key: string): boolean {
+  return SECRET_KEY_RE.test(key);
+}
+
+/**
+ * Write decrypted credential fields to chmod-600 files under a private dir.
+ * Returns the paths and field names only — never the values.
+ */
+function materializeSecret(ref: string, data: Record<string, unknown>): MaterializedSecret {
+  mkdirSync(SECRET_DIR, { recursive: true, mode: 0o700 });
+  const stamp = `${ref.replace(/[^a-zA-Z0-9_-]/g, "_")}-${randomBytes(6).toString("hex")}`;
+
+  // 1. Generic env file: `set -a; source <file>; set +a` then use $VARS.
+  const envFile = join(SECRET_DIR, `${stamp}.env`);
+  const envLines: string[] = [];
+  const fields: string[] = [];
+  for (const [k, v] of Object.entries(data)) {
+    if (v === null || v === undefined || typeof v === "object") continue;
+    const envName = k.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+    // Single-quote and escape embedded single quotes for safe shell sourcing.
+    const safe = String(v).replace(/'/g, "'\\''");
+    envLines.push(`export ${envName}='${safe}'`);
+    fields.push(envName);
+  }
+  writeFileSync(envFile, envLines.join("\n") + "\n", { mode: 0o600 });
+
+  const out: MaterializedSecret = { envFile, fields };
+
+  // 2. MySQL --defaults-extra-file (only if it looks like a DB credential).
+  const host = (data.host ?? data.hostname) as string | undefined;
+  const user = (data.user ?? data.username) as string | undefined;
+  const passKey = Object.keys(data).find(
+    (k) => looksLikePassword(k) && typeof data[k] !== "object",
+  );
+  const port = data.port as string | number | undefined;
+  const database = (data.database ?? data.db ?? data.dbname) as string | undefined;
+  if (user && passKey) {
+    const pw = String(data[passKey]);
+
+    const mysqlFile = join(SECRET_DIR, `${stamp}.mysql.cnf`);
+    const cnf = [
+      "[client]",
+      host ? `host=${host}` : "",
+      port ? `port=${port}` : "",
+      `user=${user}`,
+      `password=${pw}`,
+      database ? `database=${database}` : "",
+    ].filter((l) => l !== "").join("\n");
+    writeFileSync(mysqlFile, cnf + "\n", { mode: 0o600 });
+    out.mysqlDefaultsFile = mysqlFile;
+
+    // 3. Postgres .pgpass (host:port:db:user:password)
+    const pgFile = join(SECRET_DIR, `${stamp}.pgpass`);
+    const pgLine = `${host ?? "*"}:${port ?? "*"}:${database ?? "*"}:${user}:${pw}`;
+    writeFileSync(pgFile, pgLine + "\n", { mode: 0o600 });
+    out.pgpassFile = pgFile;
+  }
+
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // Helper: 401/403 error handling
@@ -1604,12 +1694,68 @@ const handlers: Record<string, HandlerFn> = {
   async credential_get(args, { cpClient }) {
     try {
       const ref = args.ref as string;
+      const reveal = args.reveal === true;
       const result = await cpClient.getCredential(ref);
+
+      // reveal=true: legacy behaviour — return plaintext. DANGEROUS on screen
+      // share; only for non-shell consumers (e.g. building an HTTP header value
+      // the model never echoes). Kept behind an explicit opt-in flag.
+      if (reveal) {
+        return {
+          content: [{
+            type: "text",
+            text:
+              "SECURITY WARNING: plaintext secret below (reveal=true). Do NOT " +
+              "paste this into any shell command — it will be rendered on screen.\n" +
+              JSON.stringify(result, null, 2),
+          }],
+        };
+      }
+
+      // Default (screen-share safe): materialize to chmod-600 files and return
+      // ONLY paths + secret-free usage snippets. The secret value never enters
+      // the model's text context, so it cannot be echoed inline.
+      const data = (result ?? {}) as Record<string, unknown>;
+      const mat = materializeSecret(ref, data);
+
+      // Non-secret metadata fields are safe to surface so the agent knows
+      // host/user/db without needing to read the file.
+      const nonSecret: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(data)) {
+        if (typeof v !== "object" && !looksLikePassword(k)) nonSecret[k] = v;
+      }
+
+      const lines: string[] = [];
+      lines.push(`Credential '${ref}' materialized securely (screen-share safe).`);
+      lines.push("The secret value is NOT shown here — it lives only in chmod-600 files.");
+      lines.push("");
+      if (Object.keys(nonSecret).length > 0) {
+        lines.push("Non-secret fields: " + JSON.stringify(nonSecret));
+      }
+      lines.push(`Secret fields (in files): ${mat.fields.join(", ") || "(none)"}`);
+      lines.push("");
+      lines.push("USE THE FILE — never paste the secret inline into a command.");
+      lines.push("");
+      lines.push("# Env vars (generic):");
+      lines.push(`set -a; source '${mat.envFile}'; set +a   # exports ${mat.fields.join(", ")}`);
+      if (mat.mysqlDefaultsFile) {
+        lines.push("");
+        lines.push("# MySQL (no password on the command line / screen):");
+        lines.push(`mysql --defaults-extra-file='${mat.mysqlDefaultsFile}' -e 'SELECT 1'`);
+      }
+      if (mat.pgpassFile) {
+        lines.push("");
+        lines.push("# Postgres (.pgpass — no password on the command line / screen):");
+        lines.push(`PGPASSFILE='${mat.pgpassFile}' psql -c 'SELECT 1'`);
+      }
+      lines.push("");
+      lines.push("# Clean up when done:");
+      lines.push(
+        `rm -f '${[mat.envFile, mat.mysqlDefaultsFile, mat.pgpassFile].filter(Boolean).join("' '")}'`,
+      );
+
       return {
-        content: [{
-          type: "text",
-          text: JSON.stringify(result, null, 2),
-        }],
+        content: [{ type: "text", text: lines.join("\n") }],
       };
     } catch (error: any) {
       if (error?.response?.status === 404) {
