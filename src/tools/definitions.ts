@@ -1507,35 +1507,34 @@ to link a memory to this credential.`,
   },
   {
     name: "credential_get",
-    description: `Retrieve a credential from the vault — SCREEN-SHARE SAFE by default.
+    description: `Resolve a credential from the vault — BY REFERENCE, never by value.
 
-By default the secret is materialized to chmod-600 temp files and this tool
-returns ONLY the file paths plus ready-to-use, secret-free command snippets
-(e.g. 'mysql --defaults-extra-file=<path>', 'set -a; source <path>; set +a',
-'PGPASSFILE=<path> psql'). The secret VALUE is never returned in text, so it
-can never be echoed inline into a shell command and leaked on a screen share.
+This tool returns ONLY non-secret metadata (host/user/db/port) plus ready-to-use
+command snippets that reference the credential BY NAME through the 'frinus-cred'
+wrapper. The secret VALUE is NEVER returned in text, so it can never be echoed
+inline into a shell command and leaked on a screen share. The value is resolved
+out of band, in process memory only, at execution time — never on disk.
+
+The snippets use shell expansion / process substitution so the secret flows
+directly into the consuming process and is never rendered on screen:
+  export MYSQL_PWD="$(frinus-cred <ref> password)"
+  mysql --defaults-extra-file=<(frinus-cred <ref> --as=mysql-cnf) -e 'SELECT 1'
+  PGPASSFILE=<(frinus-cred <ref> --as=pgpass) psql -c 'SELECT 1'
 
 NEVER write a secret value directly into a command string (e.g.
-'export MYSQL_PWD=...'). Always use the file-based snippet this tool returns.
-Delete the temp files when done (the snippet includes the rm command).
+'export MYSQL_PWD=<the-actual-password>'). Always reference it via frinus-cred,
+captured with $(...) or <(...). 'frinus-cred' refuses to print to a terminal, so
+running it bare (without $(...) / <(...)) will error — that is by design.
 
-Only the credential owner (authenticated user) can access their credentials.
-Use this when a memory has a credential_ref and you need the actual
-credentials to perform an action (e.g., connect to a database, call an API).`,
+Only the credential owner (authenticated API key) can access their credentials.
+Use this when a memory has a credential_ref and you need to perform an action
+(e.g., connect to a database, call an API).`,
     inputSchema: {
       type: "object" as const,
       properties: {
         ref: {
           type: "string",
           description: "Credential reference to retrieve (e.g., 'jira_muza')",
-        },
-        reveal: {
-          type: "boolean",
-          description:
-            "DANGEROUS. If true, returns the plaintext secret instead of " +
-            "materializing it to a file. Only use for non-shell consumers " +
-            "(e.g. building an HTTP header) where the value is never echoed. " +
-            "Default false (secure file-based delivery).",
         },
       },
       required: ["ref"],

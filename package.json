@@ -5,10 +5,12 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "frinus-mcp": "dist/index.js"
+    "frinus-mcp": "dist/index.js",
+    "frinus-cred": "bin/frinus-cred"
   },
   "files": [
     "dist",
+    "bin",
     "manifest.json",
     "README.md"
   ],
