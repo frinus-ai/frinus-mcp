@@ -4,7 +4,7 @@
 
 MCP (Model Context Protocol) server that exposes **70 tools** spanning cognitive memory, working memory, sessions, agents, the L0–L3 knowledge hierarchy, orchestration tasks, and training pipelines. The server speaks stdio and is consumed by Claude Desktop, Claude Code, and any MCP-aware client.
 
-- **Version:** 3.1.0
+- **Version:** 3.2.1
 - **Tools:** 70 (see [Tools Reference](#tools-reference))
 - **Backends:** Memory Engine (`:8001`) + Control Plane (`:8000`) + Agent Service (`:8002`)
 - **Public mirror:** https://github.com/frinus-ai/frinus-mcp
