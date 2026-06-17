@@ -1,13 +1,32 @@
 # Frinus MCP Server
 
-> **φρήν + νοῦς** — The cognitive memory bridge between Claude agents and the [Frinus](https://github.com/frinus-ai) platform.
+> **φρήν + νοῦς** — Gives your Claude agent long-term, cognitive memory backed by the [Frinus](https://frinus.rdxsec.com.br) platform.
 
-MCP (Model Context Protocol) server that exposes **70 tools** spanning cognitive memory, working memory, sessions, agents, the L0–L3 knowledge hierarchy, orchestration tasks, and training pipelines. The server speaks stdio and is consumed by Claude Desktop, Claude Code, and any MCP-aware client.
+`frinus-mcp` is an MCP (Model Context Protocol) server. It is the **bridge** between your MCP client — Claude Code, Cursor, or Claude Desktop — and the **Frinus platform hosted at https://frinus.rdxsec.com.br**.
+
+It does **not** run on its own. It stores nothing locally: every tool call is forwarded over HTTPS to your Frinus account. So before it does anything useful you need two things:
+
+1. a **Frinus account** (free, no card), and
+2. a **Frinus API key** (`sk-frinus-...`).
+
+With those in place, the server exposes **70 tools** spanning cognitive memory, working memory, sessions, agents, the L0–L3 knowledge hierarchy, orchestration tasks, and training pipelines. It speaks stdio and works with any MCP-aware client.
 
 - **Version:** 3.2.1
 - **Tools:** 70 (see [Tools Reference](#tools-reference))
-- **Backends:** Memory Engine (`:8001`) + Control Plane (`:8000`) + Agent Service (`:8002`)
-- **Public mirror:** https://github.com/frinus-ai/frinus-mcp
+- **Platform:** https://frinus.rdxsec.com.br (hosted SaaS — the backend this server talks to)
+- **npm package:** [`frinus-mcp`](https://www.npmjs.com/package/frinus-mcp)
+
+## How it fits together
+
+```
++-------------------+        +--------------+        +----------------------------+
+| Your MCP client   | stdio  | frinus-mcp   | HTTPS  | Frinus platform            |
+| (Claude Code,     | <----> | (this server,| <----> | frinus.rdxsec.com.br       |
+|  Cursor, Desktop) |        |  via npx)    |        | (your memories live here)  |
++-------------------+        +--------------+        +----------------------------+
+```
+
+The server validates your API key against the platform at startup, resolves your account + organisation, and routes every tool call there. No API key → it refuses to start.
 
 ## Rule Zero — MCP is mandatory
 
@@ -20,70 +39,51 @@ The Frinus MCP **is** the agent's long-term memory, identity, and intelligence. 
 
 The complete protocol set lives in the global `CLAUDE.md` (Frinus organisation), summarised below in [The 7 Protocols](#the-7-protocols).
 
-## Requirements
+## Before you start — account + API key
 
-- Node.js 18+
-- Frinus stack reachable (Memory Engine, Control Plane, Agent Service)
-- Personal API key (`sk-frinus-...`) tied to your tenant
+You need a Frinus account and an API key. Both are free to get.
 
-## Installation
+### 1. Create a free account
 
-**End users — no install needed.** Use the published package via `npx` (see config below), or the one-click `.mcpb` extension for Claude Desktop.
+Sign up at **https://frinus.rdxsec.com.br**. The **Free plan (R$0)** is enough to get started:
 
-**Developers / from source:**
+- 100 memories
+- 20 queries/day
+- no credit card required
 
-```bash
-npm install
-npm run build
+### 2. Generate an API key
+
+Once logged in, open your account **Settings → API Keys** and create a new key. You'll get a value shaped like:
+
+```
+sk-frinus-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-The build emits `dist/index.js`, ready to be wired into Claude Desktop / Claude Code.
+Copy it now — for security it's shown **only once**. This value goes into the `FRINUS_API_KEY` environment variable below. Treat it like a password; never commit it to a repo.
 
-## Distribution
+## Getting started (zero to first memory)
 
-| Channel | Client | User effort |
-|---------|--------|-------------|
-| **npm** (`npx -y frinus-mcp`) | Claude Code, Cursor, Codex, opencode | Paste config + API key |
-| **`.mcpb` bundle** | Claude Desktop | Double-click + paste API key |
-| **From source** | any | Clone + build + absolute path |
+Five minutes, four steps.
 
-URL defaults point at the Frinus SaaS, so only `FRINUS_API_KEY` is required. Override `MEMORY_SERVICE_URL` / `FRINUS_CP_URL` / `AGENT_SERVICE_URL` for self-hosted instances or local dev.
+### Step 1 — Create your account
 
-### Publishing (maintainers)
+Sign up at https://frinus.rdxsec.com.br (Free plan, no card). See [above](#1-create-a-free-account).
 
-```bash
-# 1) npm package — powers `npx -y frinus-mcp` everywhere
-npm version <patch|minor|major>
-npm publish                      # prepublishOnly runs the build
+### Step 2 — Generate your API key
 
-# 2) .mcpb bundle — powers the Claude Desktop one-click install
-npm run pack:mcpb                # -> frinus.mcpb
-gh release upload v<version> frinus.mcpb --repo frinus-ai/frinus-mcp --clobber
-# Frontend points at: releases/latest/download/frinus.mcpb
-```
+Settings → API Keys → create. Copy the `sk-frinus-...` value. See [above](#2-generate-an-api-key).
 
-## Environment Variables
+### Step 3 — Add the server to your client
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `FRINUS_API_KEY` | **required** | Personal API key (`sk-frinus-...`). Resolves tenant + user identity at boot. |
-| `MEMORY_SERVICE_URL` | `http://localhost:8001` | Memory Engine base URL |
-| `FRINUS_CP_URL` | `http://localhost:8000` | Control Plane base URL (universes, orgs, billing) |
-| `AGENT_SERVICE_URL` | `http://localhost:8002` | Agent Service base URL (agents, invocation, skills) |
-| `FRINUS_MEMORY_API_KEY` | — | Legacy fallback for `FRINUS_API_KEY` |
+You don't install anything — `npx` fetches and runs the package on demand. The only value you must provide is your API key; the platform URLs already default to production.
 
-Production endpoints (Frinus SaaS):
+**Claude Code (one-liner):**
 
 ```bash
-MEMORY_SERVICE_URL=https://frinus-memory.rdxsec.com.br
-FRINUS_CP_URL=https://frinus-api.rdxsec.com.br
-AGENT_SERVICE_URL=https://frinus-agents.rdxsec.com.br
-FRINUS_API_KEY=sk-frinus-...
+claude mcp add frinus --env FRINUS_API_KEY=sk-frinus-... -- npx -y frinus-mcp@latest
 ```
 
-## Claude Desktop / Claude Code Configuration
-
-Add the server to your MCP client configuration. **Recommended (npx, no install):**
+**Cursor / Claude Desktop / any client (config JSON):**
 
 ```json
 {
@@ -99,35 +99,45 @@ Add the server to your MCP client configuration. **Recommended (npx, no install)
 }
 ```
 
-Claude Code one-liner:
+Config file locations:
 
-```bash
-claude mcp add frinus --env FRINUS_API_KEY=sk-frinus-... -- npx -y frinus-mcp@latest
+- **Claude Code:** `~/.claude.json`, under `mcpServers`.
+- **Claude Desktop:** `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) / `~/.config/claude/claude_desktop_config.json` (Linux). Or use the one-click `.mcpb` extension and just paste your API key.
+- **Cursor:** `~/.cursor/mcp.json`, under `mcpServers`.
+
+Restart the client so it picks up the new server.
+
+> Replace `sk-frinus-...` with the real key from Step 2. You normally set **only** `FRINUS_API_KEY` — every backend URL already defaults to the hosted platform. See [Environment Variables](#environment-variables) for the full list and the self-host override.
+
+### Step 4 — Validate with your first memory
+
+In your client, ask the agent to store and recall something:
+
+```
+Store this in Frinus memory: "Our staging DB is reset every night at 02:00 UTC."
 ```
 
-From source (developers), point at the built entry and override URLs as needed:
+then in the same or a later session:
 
-```json
-{
-  "mcpServers": {
-    "frinus": {
-      "command": "node",
-      "args": ["/absolute/path/to/mcp/dist/index.js"],
-      "env": {
-        "FRINUS_API_KEY": "sk-frinus-...",
-        "MEMORY_SERVICE_URL": "http://localhost:8001",
-        "FRINUS_CP_URL": "http://localhost:8000",
-        "AGENT_SERVICE_URL": "http://localhost:8002"
-      }
-    }
-  }
-}
+```
+What time does our staging DB reset?
 ```
 
-Claude Desktop config path: `~/.config/claude/claude_desktop_config.json` (Linux) / `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS).
-Claude Code config path: `~/.claude.json` under `mcpServers`.
+Behind the scenes the agent calls `memory_store` then `memory_search` / `search_with_attention`. If the recall comes back, the bridge is live. You can confirm the same memory appears in the web app at https://frinus.rdxsec.com.br.
 
-On startup the server validates the API key via `/auth/me` and resolves the tenant org ID + logged-in user. Failures abort the process with `[FATAL]` so the client surfaces the error.
+## Environment Variables
+
+In normal use you set **only** `FRINUS_API_KEY`. The service URLs already point at the hosted platform — leave them alone unless you self-host (see [Advanced — self-host](#advanced--self-host--local-dev)).
+
+| Variable | Default (hosted platform) | Description |
+|----------|---------------------------|-------------|
+| `FRINUS_API_KEY` | **required** | Your personal API key (`sk-frinus-...`). Resolves account + organisation at boot. |
+| `MEMORY_SERVICE_URL` | `https://frinus-memory.rdxsec.com.br` | Memory Engine base URL |
+| `FRINUS_CP_URL` | `https://frinus-api.rdxsec.com.br` | Control Plane base URL (account, orgs, API keys, billing) |
+| `AGENT_SERVICE_URL` | `https://frinus-agents.rdxsec.com.br` | Agent Service base URL (agents, invocation, skills) |
+| `FRINUS_MEMORY_API_KEY` | — | Legacy fallback for `FRINUS_API_KEY` |
+
+On startup the server validates the API key against the platform and resolves your organisation + logged-in user. If validation fails it aborts with `[FATAL]` so the client surfaces the error — re-check the key from Settings → API Keys.
 
 ## The 7 Protocols
 
@@ -408,6 +418,46 @@ Operational guidelines:
 - **Agent Service** owns agent runtime, tool dispatch, team routing, persona, invocation.
 
 Tenant isolation is database-per-tenant. The MCP resolves your tenant org ID from the API key at boot — you never pass `org_id` manually.
+
+## Advanced — self-host / local dev
+
+Everything above targets the hosted platform at https://frinus.rdxsec.com.br, which is what almost everyone wants. If you run your own Frinus stack (or develop the MCP against a local backend), build from source and override the three URLs:
+
+```bash
+git clone https://github.com/frinus-ai/frinus-mcp && cd frinus-mcp
+npm install
+npm run build      # emits dist/index.js
+```
+
+```json
+{
+  "mcpServers": {
+    "frinus": {
+      "command": "node",
+      "args": ["/absolute/path/to/mcp/dist/index.js"],
+      "env": {
+        "FRINUS_API_KEY": "sk-frinus-...",
+        "MEMORY_SERVICE_URL": "http://localhost:8001",
+        "FRINUS_CP_URL": "http://localhost:8000",
+        "AGENT_SERVICE_URL": "http://localhost:8002"
+      }
+    }
+  }
+}
+```
+
+### Publishing (maintainers)
+
+```bash
+# 1) npm package — powers `npx -y frinus-mcp` everywhere
+npm version <patch|minor|major>
+npm publish                      # prepublishOnly runs the build
+
+# 2) .mcpb bundle — powers the Claude Desktop one-click install
+npm run pack:mcpb                # -> frinus.mcpb
+gh release upload v<version> frinus.mcpb --repo frinus-ai/frinus-mcp --clobber
+# Frontend points at: releases/latest/download/frinus.mcpb
+```
 
 ## Development
 
