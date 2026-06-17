@@ -234,39 +234,37 @@ const handlers: Record<string, HandlerFn> = {
   // Core Memory
   // ==========================================================================
 
-  async memory_store(args, { memoryClient, resolvedUserId }) {
+  async memory_store(args, { memoryClient, cpClient, resolvedUserId }) {
+    const createdByUser = (args.created_by_user_id as string) || resolvedUserId || undefined;
+    const userId = (args.user_id as string) || resolvedUserId || undefined;
+
+    const meta = (args.metadata as Record<string, unknown> | undefined) || {};
+    const universeId = (args.universe_id as string) || (meta.universe_id as string) || undefined;
+
+    // Context-first default: when the caller does NOT pass an explicit `scope`,
+    // memories are associated with a CONTEXT (universe). The backend resolves
+    // the universe_id from the agent when none is supplied. `organization` and
+    // `user` are only used when explicitly requested by the caller. When the
+    // agent has no resolvable universe, we fall back to `agent` scope and help
+    // future categorization by returning the list of available universes.
+    const explicitScope = args.scope as string | undefined;
+    const resolvedScope = explicitScope || "universe";
+
+    const baseInput = {
+      agent_id: args.agent_id as string,
+      content: args.content as string,
+      memory_type: args.memory_type as string,
+      importance: args.importance as number,
+      user_id: userId,
+      created_by_user_id: createdByUser,
+      metadata: args.metadata as Record<string, unknown> | undefined,
+      context_id: args.context_id as string | undefined,
+      credential_ref: args.credential_ref as string | undefined,
+      universe_id: universeId,
+    };
+
     try {
-      const createdByUser = (args.created_by_user_id as string) || resolvedUserId || undefined;
-      const userId = (args.user_id as string) || resolvedUserId || undefined;
-
-      // Auto-scope inference: if scope not provided, pick the narrowest
-      // scope justified by the available context. Caller can always pass
-      // an explicit `scope` to override this heuristic.
-      const meta = (args.metadata as Record<string, unknown> | undefined) || {};
-      const universeId = (args.universe_id as string) || (meta.universe_id as string) || undefined;
-      let resolvedScope = args.scope as string | undefined;
-      if (!resolvedScope) {
-        if (userId || createdByUser) {
-          resolvedScope = "user";
-        } else if (universeId) {
-          resolvedScope = "universe";
-        } else {
-          resolvedScope = "organization";
-        }
-      }
-
-      const result = await memoryClient.storeMemory({
-        agent_id: args.agent_id as string,
-        content: args.content as string,
-        memory_type: args.memory_type as string,
-        scope: resolvedScope,
-        importance: args.importance as number,
-        user_id: userId,
-        created_by_user_id: createdByUser,
-        metadata: args.metadata as Record<string, unknown> | undefined,
-        context_id: args.context_id as string | undefined,
-        credential_ref: args.credential_ref as string | undefined,
-      });
+      const result = await memoryClient.storeMemory({ ...baseInput, scope: resolvedScope });
       return {
         content: [{
           type: "text",
@@ -274,6 +272,47 @@ const handlers: Record<string, HandlerFn> = {
         }],
       };
     } catch (error: any) {
+      // Fallback: scope was implicitly "universe" but the agent has no
+      // resolvable universe (backend returns 400 "must be linked to a
+      // universe"). Retry as `agent` scope and surface available universes.
+      const status = error?.response?.status;
+      const detail = String(error?.response?.data?.detail ?? "");
+      const isMissingUniverse =
+        status === 400 &&
+        !explicitScope &&
+        !universeId &&
+        detail.includes("must be linked to a universe");
+
+      if (isMissingUniverse) {
+        try {
+          const result = await memoryClient.storeMemory({ ...baseInput, scope: "agent" });
+          let text = `Memory stored successfully.\nID: ${result.id}\nType: ${result.memory_type}\nScope: ${result.scope}`;
+
+          // Enrich with available universes to help future categorization.
+          try {
+            const orgId = getResolvedTenantOrgId();
+            if (orgId) {
+              const list = await cpClient.listUniverses(orgId);
+              const universes = Array.isArray(list) ? list : (list.universes || list.items || []);
+              if (universes && universes.length > 0) {
+                text += `\n\nDica: esta memória não foi associada a um universo (salva como memória do agente). Para categorizá-la, informe universe_id na próxima vez. Universos disponíveis:`;
+                universes.forEach((u: any) => {
+                  text += `\n- ${u.name} (id: ${u.id})`;
+                });
+              }
+            }
+          } catch {
+            // Listing universes is best-effort; never break a successful store.
+          }
+
+          return { content: [{ type: "text", text }] };
+        } catch (retryError: any) {
+          const retryApiErr = handleApiError(retryError);
+          if (retryApiErr) return retryApiErr;
+          throw retryError;
+        }
+      }
+
       const apiErr = handleApiError(error);
       if (apiErr) return apiErr;
       throw error;

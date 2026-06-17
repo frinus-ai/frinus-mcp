@@ -1,6 +1,6 @@
 {
   "name": "frinus-mcp",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "description": "Frinus - MCP Server for Cognitive Memory (φρήν + νοῦς). Long-term memory, sessions, agents and knowledge for Claude and any MCP client.",
   "type": "module",
   "main": "dist/index.js",

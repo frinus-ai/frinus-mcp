@@ -46,7 +46,7 @@ Scopes:
         scope: {
           type: "string",
           enum: ["user", "agent", "universe", "organization"],
-          description: "Visibility scope: user (private), agent (agent-only), universe (department), organization (org-wide). Default: organization",
+          description: "Visibility scope. Padrão: a memória é associada ao universo do agente (contexto). 'organization' (org-wide) e 'user' (private) só são usados quando explicitamente definidos; 'agent' (agent-only) é o fallback automático quando não há universo identificável.",
         },
         importance: {
           type: "number",
@@ -63,6 +63,10 @@ Scopes:
         metadata: {
           type: "object",
           description: "Metadata adicional (tags, universe, idioma, etc.)",
+        },
+        universe_id: {
+          type: "string",
+          description: "UUID do universo/contexto ao qual associar a memória. Se omitido, a memória é associada automaticamente ao universo do agente.",
         },
         context_id: {
           type: "string",

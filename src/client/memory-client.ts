@@ -121,19 +121,22 @@ export class MemoryClient implements MemoryClientInterface {
     metadata?: Record<string, unknown>;
     context_id?: string;
     credential_ref?: string;
+    universe_id?: string;
   }) {
     const payload: Record<string, unknown> = {
       agent_id: data.agent_id,
       content: data.content,
       memory_type: data.memory_type || "episodic",
-      scope: data.scope || "organization",
       importance: data.importance || 0.5,
       metadata: data.metadata,
     };
+    // The handler is the source of truth for scope; only send it when defined.
+    if (data.scope) payload.scope = data.scope;
     if (data.user_id) payload.user_id = data.user_id;
     if (data.created_by_user_id) payload.created_by_user_id = data.created_by_user_id;
     if (data.context_id) payload.context_id = data.context_id;
     if (data.credential_ref) payload.credential_ref = data.credential_ref;
+    if (data.universe_id) payload.universe_id = data.universe_id;
     const response = await this.client.post("/memories", payload);
     return response.data;
   }
