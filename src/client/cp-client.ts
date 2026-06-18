@@ -4,6 +4,7 @@
 import axios, { AxiosInstance } from "axios";
 import type { CpClientInterface } from "../types/index.js";
 import { getResolvedTenantOrgId } from "./memory-client.js";
+import { getResolvedClient } from "./client-info.js";
 
 export class CpClient implements CpClientInterface {
   private client: AxiosInstance;
@@ -19,6 +20,7 @@ export class CpClient implements CpClientInterface {
       config.headers['X-API-Key'] = apiKey;
       const orgId = getResolvedTenantOrgId();
       if (orgId) config.headers['X-Tenant-ID'] = orgId;
+      config.headers['X-Client'] = getResolvedClient();
       return config;
     });
   }

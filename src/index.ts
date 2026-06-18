@@ -30,6 +30,7 @@ import {
 } from "./client/memory-client.js";
 import { AgentClient } from "./client/agent-client.js";
 import { CpClient } from "./client/cp-client.js";
+import { getResolvedClient, setResolvedClient } from "./client/client-info.js";
 import { InteractionCapture } from "./capture/interaction-capture.js";
 import { TOOLS } from "./tools/definitions.js";
 import { dispatchTool } from "./tools/handlers.js";
@@ -121,6 +122,20 @@ async function main() {
 
     return toolResult;
   });
+
+  // Resolve the connecting MCP client's identity for the X-Client header.
+  // `getClientVersion()` is only populated after the `initialize` handshake,
+  // so we read it from the `oninitialized` callback (fired on the client's
+  // `notifications/initialized`), not right after `connect()`.
+  server.oninitialized = () => {
+    const rawName = server.getClientVersion()?.name;
+    setResolvedClient(rawName);
+    // Logged once for calibration against real clients (stderr, not stdout —
+    // stdout is the MCP transport).
+    console.error(
+      `[Client] clientInfo.name=${JSON.stringify(rawName ?? null)} normalized=${getResolvedClient()}`
+    );
+  };
 
   // Start server
   const transport = new StdioServerTransport();
