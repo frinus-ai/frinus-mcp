@@ -11,7 +11,7 @@ It does **not** run on its own. It stores nothing locally: every tool call is fo
 
 With those in place, the server exposes **70 tools** spanning cognitive memory, working memory, sessions, agents, the L0–L3 knowledge hierarchy, orchestration tasks, and training pipelines. It speaks stdio and works with any MCP-aware client.
 
-- **Version:** 3.2.1
+- **Version:** 3.3.0
 - **Tools:** 70 (see [Tools Reference](#tools-reference))
 - **Platform:** https://frinus.rdxsec.com.br (hosted SaaS — the backend this server talks to)
 - **npm package:** [`frinus-mcp`](https://www.npmjs.com/package/frinus-mcp)
