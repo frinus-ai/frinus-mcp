@@ -93,7 +93,7 @@ export interface MemoryClientInterface {
     agent_id: string; content: string; memory_type?: string; scope?: string;
     importance?: number; user_id?: string;
     created_by_user_id?: string; metadata?: Record<string, unknown>;
-    context_id?: string; credential_ref?: string;
+    context_id?: string; credential_ref?: string; universe_id?: string;
   }): Promise<any>;
   searchMemories(data: {
     query_text: string; agent_id?: string;
@@ -105,6 +105,15 @@ export interface MemoryClientInterface {
   buildContext(data: {
     agent_id: string; task_description: string; max_tokens?: number;
   }): Promise<any>;
+
+  // Auto-classification (human-in-the-loop)
+  getPendingClassifications(limit?: number): Promise<any>;
+  approveClassification(
+    memoryId: string,
+    data?: { universe_id?: string; context_id?: string },
+  ): Promise<any>;
+  rejectClassification(memoryId: string): Promise<any>;
+  approveClassificationBatch(ids: string[]): Promise<any>;
 
   // Dynamic Relevance
   reinforceMemory(memoryId: string, boost?: number): Promise<any>;
