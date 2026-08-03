@@ -18,11 +18,15 @@ Use this to record important information, learnings, decisions, or procedures
 that should be remembered for future reference.
 
 The backend classifies the memory by content at write time and returns a
-SUGGESTION (status "proposed") of which universe/context node it belongs to —
-nothing is moved automatically. Review pending suggestions with
+SUGGESTION (status "proposed"/"universe_only") of which universe/context node it
+belongs to — nothing is moved automatically. Review pending suggestions with
 memory_classification_pending and apply them with memory_classification_approve.
-Passing scope/universe_id/context_id explicitly sets the destination directly
-(no suggestion needed).
+
+Passing universe_id or context_id anchors the memory THERE directly (status
+"manual"): auto-classification is skipped entirely, so no suggestion is returned
+and nothing may later move it. The response always reports the destination the
+memory actually landed in — a suggestion, when present, is labelled as pending
+and not applied.
 
 Memory types:
 - episodic: Specific experiences and events (what happened)
@@ -53,7 +57,7 @@ Scopes:
         scope: {
           type: "string",
           enum: ["user", "agent", "universe", "organization"],
-          description: "Optional explicit visibility scope. Omit to let the backend auto-classify and return a suggestion (status 'proposed'). When set, it overrides classification (status 'manual'): 'organization' (org-wide), 'user' (private), 'universe' (department-shared), 'agent' (agent-only).",
+          description: "Optional explicit visibility scope — WHO can see the memory, independent of WHERE it is filed in the hierarchy (that is universe_id/context_id). 'organization' (org-wide), 'user' (private), 'universe' (department-shared — requires a universe, via universe_id/context_id or the agent's own), 'agent' (agent-only). Default: 'user'.",
         },
         importance: {
           type: "number",
@@ -73,7 +77,7 @@ Scopes:
         },
         universe_id: {
           type: "string",
-          description: "Optional UUID of a universe to associate the memory with explicitly (overrides auto-classification → status 'manual'). Omit to let the backend suggest one.",
+          description: "Optional UUID of a universe to file the memory under explicitly. Anchors it there as ground-truth (status 'manual'): auto-classification is skipped and nothing may later move it. Omit to let the backend suggest one.",
         },
         context_id: {
           type: "string",

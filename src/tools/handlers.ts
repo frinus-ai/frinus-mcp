@@ -288,42 +288,71 @@ function destinationLabel(result: any): string {
 }
 
 /**
- * Render the memory_store response. New backend: shows the auto-classification
- * suggestion (proposed) or final destination (manual/approved) enxuto, no
- * intrusive "Dica/Universos disponíveis" block. Old backend (no classification
- * fields): minimal ID/Type/Scope, also WITHOUT any hint.
+ * Breadcrumb for a hierarchy chain returned by the backend as a list of nodes
+ * ({ id, level, name, context_path }), e.g. "Operacoes › Contratos › Gain-share".
+ * Falls back to the raw id for legacy FK-only nodes with no contexts row.
+ */
+function hierarchyLabel(nodes: unknown): string {
+  if (!Array.isArray(nodes) || nodes.length === 0) return "";
+  return nodes
+    .map((n: any) => (typeof n?.name === "string" && n.name ? n.name : n?.id))
+    .filter((s: unknown) => typeof s === "string" && s)
+    .join(" › ");
+}
+
+/** Where the memory ACTUALLY landed — never the classifier's suggestion. */
+function appliedLabel(result: any): string {
+  const fromChain = hierarchyLabel(result?.hierarchy);
+  if (fromChain) return fromChain;
+  // Older backend without `hierarchy`: fall back to the real FK column. Still
+  // the applied destination — NOT classified_universe (that is a proposal).
+  const uni = result?.universe_id;
+  return typeof uni === "string" && uni ? uni : "";
+}
+
+/**
+ * Render the memory_store response.
+ *
+ * Hard rule: the ONLY thing reported as the destination is where the memory was
+ * actually written (`hierarchy` / `universe_id`). `classified_*` and
+ * `proposed_hierarchy` are the auto-classifier's SUGGESTION and are always
+ * labelled as such — never as the destination. Reporting a pending suggestion
+ * as the destination is what made an explicit `universe_id` look ignored when
+ * the write had in fact honoured it.
  */
 function renderStoreResult(result: any): string {
   const id = result?.id;
   const status = result?.classification_status as string | undefined;
   const head = `✓ Salva`;
 
-  // Defensive: older backend without classification fields.
-  if (!status) {
-    return `Memory stored successfully.\nID: ${id}\nType: ${result?.memory_type}\nScope: ${result?.scope}`;
+  const applied = appliedLabel(result);
+  const pending = status === "proposed" || status === "universe_only";
+
+  // Anchored: a real destination exists. Report it, and only then mention a
+  // still-pending suggestion (which cannot have been applied, by definition).
+  if (applied) {
+    let out = `${head} em: ${applied}`;
+    if (pending) {
+      const sug = hierarchyLabel(result?.proposed_hierarchy) || suggestionLabel(result);
+      if (sug && sug !== applied) {
+        out += `\n  ↳ sugestão pendente (NÃO aplicada): ${sug} — revise com memory_classification_pending`;
+      }
+    }
+    return out;
   }
 
-  if (status === "proposed") {
-    const uni = universeName(result?.classified_universe);
-    const ctx = contextName(result?.classified_context);
-    const conf = confidenceLabel(result?.confidence);
-
-    // High/medium-confidence node identified.
-    if (uni && ctx) {
+  // Not anchored anywhere: the suggestion is all we have to offer.
+  if (pending) {
+    const sug = hierarchyLabel(result?.proposed_hierarchy) || suggestionLabel(result);
+    const conf = confidenceLabel(result?.classification_confidence);
+    if (sug) {
       const confTxt = conf ? `, confiança ${conf}` : "";
-      return `${head} · sugestão: ${suggestionLabel(result)} (auto${confTxt}) — aprove com memory_classification_approve`;
+      return `${head} · sem destino aplicado · sugestão: ${sug} (auto${confTxt}) — aprove com memory_classification_approve`;
     }
-    // Universe-only suggestion (no specific node).
-    if (uni) {
-      return `${head} · sugestão de universo: ${uni} (nó específico não identificado) — aprove com memory_classification_approve`;
-    }
-    // Low / no confidence: no reliable suggestion.
-    return `${head} · sem sugestão confiável — use memory_classification_pending para revisar`;
+    return `${head} · sem destino aplicado e sem sugestão confiável — use memory_classification_pending para revisar`;
   }
 
-  // manual / approved: show final destination without "sugestão".
-  const dest = destinationLabel(result);
-  if (dest) return `${head} · classificada em: ${dest}`;
+  // Defensive: older backend without classification fields, or no hierarchy at all.
   return `${head}\nID: ${id}\nType: ${result?.memory_type}\nScope: ${result?.scope}`;
 }
 
