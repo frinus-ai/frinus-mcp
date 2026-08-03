@@ -224,6 +224,139 @@ export function handleApiError(error: any): ToolResult | null {
 }
 
 // ---------------------------------------------------------------------------
+// Auto-classification rendering helpers (human-in-the-loop)
+// ---------------------------------------------------------------------------
+// The Memory Engine now classifies a memory by content at write time and
+// returns a SUGGESTION with classification_status="proposed". These helpers
+// render that suggestion enxuto, and degrade gracefully to the minimal
+// ID/Type/Scope format when an OLDER backend omits the classification fields.
+
+/** Human-readable confidence bucket from a 0..1 score. >=0.75 alta, >=0.45 média. */
+function confidenceLabel(confidence: unknown): string | null {
+  if (typeof confidence !== "number" || Number.isNaN(confidence)) return null;
+  if (confidence >= 0.75) return "alta";
+  if (confidence >= 0.45) return "média";
+  return "baixa";
+}
+
+/** Name of a classified universe, tolerating string | {name} shapes. */
+function universeName(u: unknown): string | null {
+  if (!u) return null;
+  if (typeof u === "string") return u;
+  if (typeof u === "object") {
+    const name = (u as any).name;
+    if (typeof name === "string" && name) return name;
+  }
+  return null;
+}
+
+/** Breadcrumb path of a classified context node ("Checkout › Antifraude"). */
+function contextName(c: unknown): string | null {
+  if (!c) return null;
+  if (typeof c === "string") return c;
+  if (typeof c === "object") {
+    const obj = c as any;
+    const path = obj.path || obj.context_path || obj.name;
+    if (typeof path === "string" && path) return path;
+  }
+  return null;
+}
+
+/**
+ * Build the suggestion breadcrumb from a result that carries
+ * classified_universe / classified_context, e.g.
+ * "Monetizze › Checkout › Antifraude" or just "Monetizze".
+ */
+function suggestionLabel(result: any): string {
+  const uni = universeName(result?.classified_universe);
+  const ctx = contextName(result?.classified_context);
+  if (uni && ctx) return `${uni} › ${ctx}`;
+  if (uni) return uni;
+  if (ctx) return ctx;
+  return "";
+}
+
+/**
+ * Build the FINAL destination breadcrumb for an approved/manual memory. Falls
+ * back to the classified_* suggestion shape, then to a bare scope.
+ */
+function destinationLabel(result: any): string {
+  const fromSuggestion = suggestionLabel(result);
+  if (fromSuggestion) return fromSuggestion;
+  if (typeof result?.scope === "string" && result.scope) return `scope ${result.scope}`;
+  return "";
+}
+
+/**
+ * Breadcrumb for a hierarchy chain returned by the backend as a list of nodes
+ * ({ id, level, name, context_path }), e.g. "Operacoes › Contratos › Gain-share".
+ * Falls back to the raw id for legacy FK-only nodes with no contexts row.
+ */
+function hierarchyLabel(nodes: unknown): string {
+  if (!Array.isArray(nodes) || nodes.length === 0) return "";
+  return nodes
+    .map((n: any) => (typeof n?.name === "string" && n.name ? n.name : n?.id))
+    .filter((s: unknown) => typeof s === "string" && s)
+    .join(" › ");
+}
+
+/** Where the memory ACTUALLY landed — never the classifier's suggestion. */
+function appliedLabel(result: any): string {
+  const fromChain = hierarchyLabel(result?.hierarchy);
+  if (fromChain) return fromChain;
+  // Older backend without `hierarchy`: fall back to the real FK column. Still
+  // the applied destination — NOT classified_universe (that is a proposal).
+  const uni = result?.universe_id;
+  return typeof uni === "string" && uni ? uni : "";
+}
+
+/**
+ * Render the memory_store response.
+ *
+ * Hard rule: the ONLY thing reported as the destination is where the memory was
+ * actually written (`hierarchy` / `universe_id`). `classified_*` and
+ * `proposed_hierarchy` are the auto-classifier's SUGGESTION and are always
+ * labelled as such — never as the destination. Reporting a pending suggestion
+ * as the destination is what made an explicit `universe_id` look ignored when
+ * the write had in fact honoured it.
+ */
+function renderStoreResult(result: any): string {
+  const id = result?.id;
+  const status = result?.classification_status as string | undefined;
+  const head = `✓ Salva`;
+
+  const applied = appliedLabel(result);
+  const pending = status === "proposed" || status === "universe_only";
+
+  // Anchored: a real destination exists. Report it, and only then mention a
+  // still-pending suggestion (which cannot have been applied, by definition).
+  if (applied) {
+    let out = `${head} em: ${applied}`;
+    if (pending) {
+      const sug = hierarchyLabel(result?.proposed_hierarchy) || suggestionLabel(result);
+      if (sug && sug !== applied) {
+        out += `\n  ↳ sugestão pendente (NÃO aplicada): ${sug} — revise com memory_classification_pending`;
+      }
+    }
+    return out;
+  }
+
+  // Not anchored anywhere: the suggestion is all we have to offer.
+  if (pending) {
+    const sug = hierarchyLabel(result?.proposed_hierarchy) || suggestionLabel(result);
+    const conf = confidenceLabel(result?.classification_confidence);
+    if (sug) {
+      const confTxt = conf ? `, confiança ${conf}` : "";
+      return `${head} · sem destino aplicado · sugestão: ${sug} (auto${confTxt}) — aprove com memory_classification_approve`;
+    }
+    return `${head} · sem destino aplicado e sem sugestão confiável — use memory_classification_pending para revisar`;
+  }
+
+  // Defensive: older backend without classification fields, or no hierarchy at all.
+  return `${head}\nID: ${id}\nType: ${result?.memory_type}\nScope: ${result?.scope}`;
+}
+
+// ---------------------------------------------------------------------------
 // Handler map: tool name -> async handler function
 // ---------------------------------------------------------------------------
 type HandlerFn = (args: ToolArgs, deps: ToolHandlerDeps) => Promise<ToolResult>;
@@ -234,85 +367,141 @@ const handlers: Record<string, HandlerFn> = {
   // Core Memory
   // ==========================================================================
 
-  async memory_store(args, { memoryClient, cpClient, resolvedUserId }) {
+  async memory_store(args, { memoryClient, resolvedUserId }) {
     const createdByUser = (args.created_by_user_id as string) || resolvedUserId || undefined;
     const userId = (args.user_id as string) || resolvedUserId || undefined;
 
     const meta = (args.metadata as Record<string, unknown> | undefined) || {};
     const universeId = (args.universe_id as string) || (meta.universe_id as string) || undefined;
 
-    // Context-first default: when the caller does NOT pass an explicit `scope`,
-    // memories are associated with a CONTEXT (universe). The backend resolves
-    // the universe_id from the agent when none is supplied. `organization` and
-    // `user` are only used when explicitly requested by the caller. When the
-    // agent has no resolvable universe, we fall back to `agent` scope and help
-    // future categorization by returning the list of available universes.
-    const explicitScope = args.scope as string | undefined;
-    const resolvedScope = explicitScope || "universe";
+    // Human-in-the-loop classification: the backend classifies the memory by
+    // content at write time and returns a SUGGESTION (classification_status
+    // "proposed"). Nothing is moved automatically — the user reviews via
+    // memory_classification_pending and approves with
+    // memory_classification_approve. The MCP layer no longer injects an
+    // implicit "universe" scope nor surfaces "available universes"; scope,
+    // universe_id and context_id are forwarded ONLY when the caller sets them
+    // (explicit overrides → classification_status "manual").
+    try {
+      const result = await memoryClient.storeMemory({
+        agent_id: args.agent_id as string,
+        content: args.content as string,
+        memory_type: args.memory_type as string,
+        importance: args.importance as number,
+        user_id: userId,
+        created_by_user_id: createdByUser,
+        metadata: args.metadata as Record<string, unknown> | undefined,
+        context_id: args.context_id as string | undefined,
+        credential_ref: args.credential_ref as string | undefined,
+        universe_id: universeId,
+        scope: args.scope as string | undefined,
+      });
+      return { content: [{ type: "text", text: renderStoreResult(result) }] };
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+  },
 
-    const baseInput = {
-      agent_id: args.agent_id as string,
-      content: args.content as string,
-      memory_type: args.memory_type as string,
-      importance: args.importance as number,
-      user_id: userId,
-      created_by_user_id: createdByUser,
-      metadata: args.metadata as Record<string, unknown> | undefined,
-      context_id: args.context_id as string | undefined,
-      credential_ref: args.credential_ref as string | undefined,
-      universe_id: universeId,
-    };
+  // ==========================================================================
+  // Auto-classification (human-in-the-loop)
+  // ==========================================================================
+
+  async memory_classification_pending(args, { memoryClient }) {
+    let result: any;
+    try {
+      result = await memoryClient.getPendingClassifications(args.limit as number | undefined);
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+
+    const items = Array.isArray(result) ? result : (result?.items || result?.pending || []);
+    if (!items || items.length === 0) {
+      return { content: [{ type: "text", text: "Nenhuma sugestão de classificação aguardando aprovação." }] };
+    }
+
+    let formatted = `Sugestões aguardando aprovação (${items.length}):\n\n`;
+    items.forEach((m: any, i: number) => {
+      const label = suggestionLabel(m);
+      const conf = confidenceLabel(m.confidence);
+      const preview = typeof m.content === "string"
+        ? (m.content.length > 120 ? m.content.slice(0, 120) + "…" : m.content)
+        : "";
+      formatted += `${i + 1}. (id: ${m.id})`;
+      if (conf) formatted += ` · confiança ${conf}`;
+      formatted += `\n   sugestão: ${label}\n`;
+      if (preview) formatted += `   ${preview}\n`;
+      formatted += `\n`;
+    });
+    formatted += `Aprove com memory_classification_approve(memory_id) — passe universe_id/context_id para corrigir o destino.`;
+    return { content: [{ type: "text", text: formatted }] };
+  },
+
+  async memory_classification_approve(args, { memoryClient }) {
+    const memoryId = args.memory_id as string;
+    const override: { universe_id?: string; context_id?: string } = {};
+    if (args.universe_id) override.universe_id = args.universe_id as string;
+    if (args.context_id) override.context_id = args.context_id as string;
+
+    let result: any;
+    try {
+      result = await memoryClient.approveClassification(memoryId, override);
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+
+    const dest = destinationLabel(result) || suggestionLabel(result);
+    const overridden = Boolean(override.universe_id || override.context_id);
+    let text = `✓ Classificação aprovada`;
+    if (dest) text += ` · ${dest}`;
+    if (overridden) text += ` (destino corrigido pelo usuário)`;
+    text += `\nID: ${memoryId}`;
+    return { content: [{ type: "text", text }] };
+  },
+
+  async memory_reclassify(args, { memoryClient }) {
+    const memoryId = args.memory_id as string;
+    const rerunAuto = args.rerun_auto as boolean | undefined;
+    const universeId = args.universe_id as string | undefined;
+    const contextId = args.context_id as string | undefined;
 
     try {
-      const result = await memoryClient.storeMemory({ ...baseInput, scope: resolvedScope });
+      // Correction = approve with an override (or reject to re-run the
+      // backend's auto-classifier when no explicit target is given).
+      if (universeId || contextId) {
+        const result = await memoryClient.approveClassification(memoryId, {
+          universe_id: universeId,
+          context_id: contextId,
+        });
+        const dest = destinationLabel(result) || suggestionLabel(result);
+        let text = `✓ Reclassificada`;
+        if (dest) text += ` · ${dest}`;
+        text += ` (destino definido pelo usuário)\nID: ${memoryId}`;
+        return { content: [{ type: "text", text }] };
+      }
+
+      if (rerunAuto) {
+        const result = await memoryClient.rejectClassification(memoryId);
+        const dest = suggestionLabel(result);
+        let text = `✓ Sugestão anterior descartada; reclassificação automática solicitada`;
+        if (dest) text += ` · nova sugestão: ${dest}`;
+        text += `\nID: ${memoryId}\nRevise em memory_classification_pending.`;
+        return { content: [{ type: "text", text }] };
+      }
+
       return {
         content: [{
           type: "text",
-          text: `Memory stored successfully.\nID: ${result.id}\nType: ${result.memory_type}\nScope: ${result.scope}`,
+          text: "memory_reclassify requer universe_id/context_id (destino corrigido) ou rerun_auto=true (reexecutar classificação automática).",
         }],
+        isError: true,
       };
     } catch (error: any) {
-      // Fallback: scope was implicitly "universe" but the agent has no
-      // resolvable universe (backend returns 400 "must be linked to a
-      // universe"). Retry as `agent` scope and surface available universes.
-      const status = error?.response?.status;
-      const detail = String(error?.response?.data?.detail ?? "");
-      const isMissingUniverse =
-        status === 400 &&
-        !explicitScope &&
-        !universeId &&
-        detail.includes("must be linked to a universe");
-
-      if (isMissingUniverse) {
-        try {
-          const result = await memoryClient.storeMemory({ ...baseInput, scope: "agent" });
-          let text = `Memory stored successfully.\nID: ${result.id}\nType: ${result.memory_type}\nScope: ${result.scope}`;
-
-          // Enrich with available universes to help future categorization.
-          try {
-            const orgId = getResolvedTenantOrgId();
-            if (orgId) {
-              const list = await cpClient.listUniverses(orgId);
-              const universes = Array.isArray(list) ? list : (list.universes || list.items || []);
-              if (universes && universes.length > 0) {
-                text += `\n\nDica: esta memória não foi associada a um universo (salva como memória do agente). Para categorizá-la, informe universe_id na próxima vez. Universos disponíveis:`;
-                universes.forEach((u: any) => {
-                  text += `\n- ${u.name} (id: ${u.id})`;
-                });
-              }
-            }
-          } catch {
-            // Listing universes is best-effort; never break a successful store.
-          }
-
-          return { content: [{ type: "text", text }] };
-        } catch (retryError: any) {
-          const retryApiErr = handleApiError(retryError);
-          if (retryApiErr) return retryApiErr;
-          throw retryError;
-        }
-      }
-
       const apiErr = handleApiError(error);
       if (apiErr) return apiErr;
       throw error;

@@ -17,6 +17,17 @@ export const TOOLS: Tool[] = [
 Use this to record important information, learnings, decisions, or procedures
 that should be remembered for future reference.
 
+The backend classifies the memory by content at write time and returns a
+SUGGESTION (status "proposed"/"universe_only") of which universe/context node it
+belongs to — nothing is moved automatically. Review pending suggestions with
+memory_classification_pending and apply them with memory_classification_approve.
+
+Passing universe_id or context_id anchors the memory THERE directly (status
+"manual"): auto-classification is skipped entirely, so no suggestion is returned
+and nothing may later move it. The response always reports the destination the
+memory actually landed in — a suggestion, when present, is labelled as pending
+and not applied.
+
 Memory types:
 - episodic: Specific experiences and events (what happened)
 - semantic: General knowledge and facts (what I know)
@@ -46,7 +57,7 @@ Scopes:
         scope: {
           type: "string",
           enum: ["user", "agent", "universe", "organization"],
-          description: "Visibility scope. Padrão: a memória é associada ao universo do agente (contexto). 'organization' (org-wide) e 'user' (private) só são usados quando explicitamente definidos; 'agent' (agent-only) é o fallback automático quando não há universo identificável.",
+          description: "Optional explicit visibility scope — WHO can see the memory, independent of WHERE it is filed in the hierarchy (that is universe_id/context_id). 'organization' (org-wide), 'user' (private), 'universe' (department-shared — requires a universe, via universe_id/context_id or the agent's own), 'agent' (agent-only). Default: 'user'.",
         },
         importance: {
           type: "number",
@@ -66,7 +77,7 @@ Scopes:
         },
         universe_id: {
           type: "string",
-          description: "UUID do universo/contexto ao qual associar a memória. Se omitido, a memória é associada automaticamente ao universo do agente.",
+          description: "Optional UUID of a universe to file the memory under explicitly. Anchors it there as ground-truth (status 'manual'): auto-classification is skipped and nothing may later move it. Omit to let the backend suggest one.",
         },
         context_id: {
           type: "string",
@@ -159,6 +170,64 @@ Use with caution - this permanently removes the memory.`,
       type: "object" as const,
       properties: {
         memory_id: { type: "string", description: "UUID of the memory to delete" },
+      },
+      required: ["memory_id"],
+    },
+  },
+  // ==========================================================================
+  // Auto-classification — human-in-the-loop (3)
+  // ==========================================================================
+  {
+    name: "memory_classification_pending",
+    description: `List memories whose auto-classification is awaiting your approval.
+
+The backend classifies each new memory by content and proposes a target
+universe/context node (status "proposed"). This returns that review queue with,
+per item: the memory id, the suggested destination breadcrumb, and the
+confidence. Approve with memory_classification_approve, or correct the target by
+passing universe_id/context_id to it.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        limit: { type: "integer", description: "Maximum suggestions to return (default: backend default)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "memory_classification_approve",
+    description: `Approve a proposed classification, moving the memory to its suggested
+universe/context node.
+
+Without overrides, the backend applies its own suggestion. Pass universe_id
+and/or context_id to override the suggested target (also the way to CORRECT a
+wrong suggestion).`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        memory_id: { type: "string", description: "UUID of the memory whose classification is being approved" },
+        universe_id: { type: "string", description: "Optional UUID of a universe to override the suggested destination" },
+        context_id: { type: "string", description: "Optional UUID of a hierarchy node (concept/theme/topic/point) to override the suggested destination" },
+      },
+      required: ["memory_id"],
+    },
+  },
+  {
+    name: "memory_reclassify",
+    description: `Re-classify a memory. Either pin it to an explicit destination, or ask the
+backend to re-run its automatic classifier.
+
+- Pass universe_id and/or context_id to set the destination directly (correction).
+- Pass rerun_auto=true (and no explicit target) to discard the current
+  suggestion and let the backend propose a new one (review via
+  memory_classification_pending).`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        memory_id: { type: "string", description: "UUID of the memory to reclassify" },
+        universe_id: { type: "string", description: "Optional UUID of a universe to set as the explicit destination" },
+        context_id: { type: "string", description: "Optional UUID of a hierarchy node to set as the explicit destination" },
+        rerun_auto: { type: "boolean", description: "When true (and no explicit target), re-run the backend's automatic classification" },
       },
       required: ["memory_id"],
     },

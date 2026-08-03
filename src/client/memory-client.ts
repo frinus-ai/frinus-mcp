@@ -195,6 +195,57 @@ export class MemoryClient implements MemoryClientInterface {
   }
 
   // =========================================================================
+  // Auto-classification (human-in-the-loop)
+  //
+  // The backend classifies a memory by content at write time and returns a
+  // SUGGESTION with classification_status="proposed". The user reviews the
+  // pending queue and explicitly approves (optionally overriding the target)
+  // or rejects. Nothing is moved automatically.
+  // =========================================================================
+
+  /** List memories with a classification suggestion awaiting approval. */
+  async getPendingClassifications(limit?: number) {
+    const params = limit ? `?limit=${limit}` : "";
+    const response = await this.client.get(`/memories/classification/pending${params}`);
+    return response.data;
+  }
+
+  /**
+   * Approve a proposed classification. Without overrides, the backend applies
+   * its own suggestion. Passing universe_id and/or context_id overrides the
+   * suggested target (also used to CORRECT a wrong suggestion).
+   */
+  async approveClassification(
+    memoryId: string,
+    data?: { universe_id?: string; context_id?: string },
+  ) {
+    const payload: Record<string, unknown> = {};
+    if (data?.universe_id) payload.universe_id = data.universe_id;
+    if (data?.context_id) payload.context_id = data.context_id;
+    const response = await this.client.post(
+      `/memories/${memoryId}/classification/approve`,
+      payload,
+    );
+    return response.data;
+  }
+
+  /** Reject a proposed classification (memory stays where it is). */
+  async rejectClassification(memoryId: string) {
+    const response = await this.client.post(
+      `/memories/${memoryId}/classification/reject`,
+    );
+    return response.data;
+  }
+
+  /** Approve multiple proposed classifications in one call. */
+  async approveClassificationBatch(ids: string[]) {
+    const response = await this.client.post("/memories/classification/approve-batch", {
+      ids,
+    });
+    return response.data;
+  }
+
+  // =========================================================================
   // Dynamic Relevance
   // =========================================================================
 
