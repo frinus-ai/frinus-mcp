@@ -84,7 +84,7 @@ async function main() {
   const server = new Server(
     {
       name: "frinus",
-      version: "3.1.0",
+      version: "3.5.0",
     },
     {
       capabilities: {
