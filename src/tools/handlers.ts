@@ -1326,13 +1326,14 @@ const handlers: Record<string, HandlerFn> = {
         });
       }
 
-      const delegateTargets = runtime.delegate_targets || [];
-      if (delegateTargets.length > 0) {
-        formatted += `\n### Delegate Targets (${delegateTargets.length})\n`;
-        delegateTargets.forEach((t: any) => {
-          const name = t.name || t.agent_name || t.id || t;
-          formatted += `- ${name}${t.specialization ? ` — ${t.specialization}` : ""}${t.id && t.name ? ` (${t.id})` : ""}\n`;
-        });
+      // The roster itself is deliberately NOT inlined — it costs thousands of
+      // tokens on a mid-size org and carries no agent IDs. Boot only needs to
+      // know a team exists and how big it is; `agent_list` serves the rest.
+      // The summary is composed server-side, already in the agent's own
+      // language — do not build prose here.
+      const delegateDigest = runtime.delegate_digest;
+      if (delegateDigest && delegateDigest.count > 0 && delegateDigest.summary) {
+        formatted += `\n### Delegate Targets\n${delegateDigest.summary}\n`;
       }
 
       return { content: [{ type: "text", text: formatted }] };

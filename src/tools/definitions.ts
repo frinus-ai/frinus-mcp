@@ -842,7 +842,9 @@ Memories created by the agent are NOT deleted.`,
     name: "agent_bootstrap",
     description: `Bootstrap completo do agente — chame no início da sessão para carregar identidade, system prompt e contexto runtime. O agente thin-client chama isto como regra única de boot.
 
-Retorna identity, system_prompt, runtime (working_memory, recent_memories, skills, delegate_targets) e persona_version em uma única chamada.`,
+Retorna identity, system_prompt, runtime (working_memory, recent_memories, skills, delegate_digest) e persona_version em uma única chamada.
+
+O roster de especialistas NÃO vem no bootstrap — apenas um resumo (quantos e em quais universos). Use \`agent_list\` no momento da delegação para obter nomes e IDs.`,
     inputSchema: {
       type: "object" as const,
       properties: {
