@@ -15,9 +15,15 @@
 
 $ErrorActionPreference = 'Stop'
 
+# O 'wsl.exe' escreve a saida em UTF-16 por padrao, e o PowerShell do Windows
+# le isso como texto com bytes nulos entre as letras ("U\0b\0u\0n..."), o que
+# faz a comparacao de nomes falhar mesmo com o Ubuntu instalado. Esta variavel
+# pede saida em UTF-8 (WSL 0.64+); o filtro de nulos abaixo cobre versoes antigas.
+$env:WSL_UTF8 = 1
+
 # Endereco de onde o instalador do Ubuntu e baixado (HTTPS).
 # >>> A equipe RDX define este endereco antes de distribuir. <<<
-$InstallUrl = if ($env:FRINUS_INSTALL_URL) { $env:FRINUS_INSTALL_URL } else { 'https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v1/install/install.sh' }
+$InstallUrl = if ($env:FRINUS_INSTALL_URL) { $env:FRINUS_INSTALL_URL } else { 'https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v2/install/install.sh' }
 $Distro     = 'Ubuntu'
 $Suporte    = 'Se precisar de ajuda, chame a equipe RDX que te enviou este instalador.'
 
@@ -55,7 +61,9 @@ $temDistro = $false
 if ($temWsl) {
   # 'wsl -l -q' lista as distribuicoes instaladas (uma por linha).
   try {
-    $lista = (wsl.exe -l -q) 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
+    $lista = @( (wsl.exe -l -q) 2>$null |
+                ForEach-Object { ($_ -replace "`0", '').Trim() } |
+                Where-Object { $_ -ne '' } )
     if ($lista -contains $Distro) { $temDistro = $true }
     elseif ($lista.Count -gt 0)  { $temDistro = $true; $Distro = $lista[0] }  # usa a distro que ja existe
   } catch { $temDistro = $false }
@@ -67,9 +75,17 @@ if (-not $temDistro) {
     Parar "Preciso ser executado como administrador para instalar a base." `
           "Feche esta janela. Clique com o botao direito no 'PowerShell' e escolha 'Executar como administrador'. Depois cole o mesmo comando de novo."
   }
+  # Programa externo que falha NAO gera erro terminante no PowerShell (o
+  # $ErrorActionPreference so vale para cmdlets), entao o try/catch sozinho
+  # deixaria a falha passar em silencio. Conferimos o codigo de saida.
+  $falhou = $false
   try {
     wsl.exe --install -d $Distro
+    if ($LASTEXITCODE -ne 0) { $falhou = $true }
   } catch {
+    $falhou = $true
+  }
+  if ($falhou) {
     Parar "Nao consegui instalar a base automaticamente." `
           "Verifique sua conexao com a internet e tente de novo. Se continuar, chame a equipe RDX."
   }
@@ -102,9 +118,16 @@ Write-Host "Em algum momento ela vai pedir a sua chave de acesso e o login da su
 # escondida, sem passar pelo Windows.
 $cmd = "curl -fsSL '$InstallUrl' -o /tmp/frinus-install.sh && bash /tmp/frinus-install.sh"
 
+# Mesma armadilha do passo anterior: se o instalador de dentro do Ubuntu sair
+# com erro, o catch nao dispara. O codigo de saida e a unica evidencia real.
+$falhouInstall = $false
 try {
   wsl.exe -d $Distro -- bash -lic $cmd
+  if ($LASTEXITCODE -ne 0) { $falhouInstall = $true }
 } catch {
+  $falhouInstall = $true
+}
+if ($falhouInstall) {
   Parar "A instalacao dentro do Ubuntu nao foi concluida." `
         "Abra o 'Ubuntu' pelo menu Iniciar e cole novamente o mesmo comando que a RDX te enviou."
 }

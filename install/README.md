@@ -21,16 +21,16 @@ oficial leva o cliente para dentro do WSL2, onde funciona como no Linux.
 instalação do WSL2):
 
 ```powershell
-irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v1/install/setup.ps1 | iex
+irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v2/install/setup.ps1 | iex
 ```
 
 **Linux / macOS** (ou dentro do Ubuntu, se preferir manual):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v1/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v2/install/install.sh | bash
 ```
 
-Os endereços apontam para a **tag imutável** `client-installer-v1` — ver
+Os endereços apontam para a **tag imutável** `client-installer-v2` — ver
 "Versionamento" abaixo.
 
 ## O que o cliente precisa ter em mãos
@@ -47,13 +47,13 @@ executar, os hashes SHA-256 dos scripts desta release são:
 
 ```
 install.sh   b89490d9613707c2e5c65a47de5163c166896013a982fb87520b08333cc943e1
-setup.ps1    0bea2c481f47d77e07d1fa2ce1ea4898a7cdea79c2e2cc27550fd628a0326a04
+setup.ps1    1c263d9678182cc7277aa39e047bb33cba8fefd5c5be13cf8c755c6bb7ad2f4d
 ```
 
 Conferir no Linux/macOS antes de rodar:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v1/install/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v2/install/install.sh -o install.sh
 sha256sum install.sh   # deve bater com o hash acima
 less install.sh        # revise, depois: bash install.sh
 ```
@@ -61,7 +61,7 @@ less install.sh        # revise, depois: bash install.sh
 Conferir no Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v1/install/setup.ps1 -OutFile setup.ps1
+irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v2/install/setup.ps1 -OutFile setup.ps1
 Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
 ```
 
@@ -85,7 +85,7 @@ Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
 
 ## Versionamento (para mantenedores)
 
-Os one-liners apontam para a **tag** `client-installer-v1`, não para `main`.
+Os one-liners apontam para a **tag** `client-installer-v2`, não para `main`.
 Motivo: `main` é mutável — qualquer commit no repo mudaria o que os clientes já
 distribuídos executam. Uma tag é imutável e intencional: o cliente sempre roda
 exatamente o que foi revisado naquela release.
@@ -94,7 +94,7 @@ Para publicar/atualizar:
 
 ```bash
 # na branch com estes arquivos, após revisar:
-git tag client-installer-v1        # ou -v2, -v3... a cada nova release do instalador
+git tag client-installer-v2        # ou -v3, -v4... a cada nova release do instalador
 git push origin main --tags        # ou push da branch + tag
 
 # ao mudar os scripts: recalcule os hashes e crie uma tag NOVA (não mova a antiga)
