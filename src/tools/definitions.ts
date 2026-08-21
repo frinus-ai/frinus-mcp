@@ -1662,10 +1662,14 @@ RULES:
   },
   {
     name: "credential_list",
-    description: `List all stored credentials for the current user.
+    description: `List every credential you can access in this organization.
 
-Returns credential metadata (ref, type, created_at) without any secret data.
-Use this to see what integrations have stored credentials.`,
+Covers credentials you OWN and credentials other members SHARED with you.
+Each entry says which it is: shared ones are marked with who shared them,
+and owned ones with how many people they reach.
+
+Returns metadata only (ref, created_at, sharing info) — never secret data.
+Use a listed ref with 'credential_exec' to actually use the credential.`,
     inputSchema: {
       type: "object" as const,
       properties: {},
@@ -1683,6 +1687,87 @@ This cannot be undone.`,
         ref: {
           type: "string",
           description: "Credential reference to delete (e.g., 'jira_muza')",
+        },
+      },
+      required: ["ref"],
+    },
+  },
+  {
+    name: "credential_share",
+    description: `Share a credential you own with another member of your organization.
+
+The grant gives that member the SAME access you have: they can run
+'credential_exec' with the ref and read the value. There is no reduced
+"use but never reveal" level, and that is deliberate — 'credential_exec'
+takes an arbitrary argv, so any such tier would be one command away from
+being bypassed. Share only with people you would hand the secret to.
+
+What stays yours alone is MANAGEMENT: only the owner can share, revoke,
+overwrite or delete a credential. Receiving a share never confers that.
+
+Identify the recipient by 'email' (usual) or 'user_id' (Keycloak UUID).
+They must already be an active member of your organization.
+
+Idempotent: re-sharing with the same person is a no-op, not an error.
+
+Revoking later stops FUTURE access — it cannot un-read what was already
+read. If a secret may have been misused, rotate it.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        ref: {
+          type: "string",
+          description: "Credential reference you own (e.g., 'mysql_prod', 'jira_muza')",
+        },
+        email: {
+          type: "string",
+          description: "Email of the org member who will receive access",
+        },
+        user_id: {
+          type: "string",
+          description: "Keycloak UUID of the member (alternative to email)",
+        },
+      },
+      required: ["ref"],
+    },
+  },
+  {
+    name: "credential_unshare",
+    description: `Revoke a member's access to a credential you own.
+
+Stops future access only. It does NOT undo what the person already read:
+if you are revoking because the secret may have leaked, rotate the secret
+as well — revocation is not a recall.
+
+Owner-only.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        ref: {
+          type: "string",
+          description: "Credential reference you own",
+        },
+        user_id: {
+          type: "string",
+          description: "Keycloak UUID of the member whose access is revoked",
+        },
+      },
+      required: ["ref", "user_id"],
+    },
+  },
+  {
+    name: "credential_shares",
+    description: `List who a credential you own is shared with.
+
+Owner-only: holding a share does not let you see the other recipients.
+Returns each grantee (email/name when the directory resolves them), who
+granted it and when. No secret data.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        ref: {
+          type: "string",
+          description: "Credential reference you own",
         },
       },
       required: ["ref"],

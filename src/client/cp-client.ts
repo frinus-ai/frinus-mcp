@@ -76,4 +76,36 @@ export class CpClient implements CpClientInterface {
   async deleteCredential(integrationRef: string): Promise<void> {
     await this.client.delete(`/api/v1/credentials/${integrationRef}`);
   }
+
+  async listCredentialShares(integrationRef: string): Promise<any> {
+    const response = await this.client.get(
+      `/api/v1/credentials/${integrationRef}/shares`,
+    );
+    return response.data;
+  }
+
+  async shareCredential(
+    integrationRef: string,
+    userIdOrEmail: string,
+  ): Promise<any> {
+    // The API accepts either field; pick by shape so callers can pass
+    // whichever they have. An email is what a human or agent usually knows.
+    const body = userIdOrEmail.includes("@")
+      ? { email: userIdOrEmail }
+      : { user_id: userIdOrEmail };
+    const response = await this.client.post(
+      `/api/v1/credentials/${integrationRef}/shares`,
+      body,
+    );
+    return response.data;
+  }
+
+  async revokeCredentialShare(
+    integrationRef: string,
+    granteeUserId: string,
+  ): Promise<void> {
+    await this.client.delete(
+      `/api/v1/credentials/${integrationRef}/shares/${granteeUserId}`,
+    );
+  }
 }

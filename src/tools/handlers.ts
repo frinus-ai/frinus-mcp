@@ -2192,13 +2192,23 @@ const handlers: Record<string, HandlerFn> = {
           }],
         };
       }
-      const lines = items.map((c: any) =>
-        `- ${c.integration_type} (created: ${c.created_at})`
-      );
+      // Mark provenance: owned vs shared-with-me. An agent picking a ref
+      // should know whether it may manage it (share/revoke/delete) or only
+      // use it — management is owner-only server-side.
+      const lines = items.map((c: any) => {
+        if (c.is_owner === false) {
+          return `- ${c.integration_type} (shared with you; owner manages it)`;
+        }
+        const shared =
+          c.share_count > 0
+            ? `, shared with ${c.share_count} member${c.share_count === 1 ? "" : "s"}`
+            : "";
+        return `- ${c.integration_type} (yours, created: ${c.created_at}${shared})`;
+      });
       return {
         content: [{
           type: "text",
-          text: `Stored credentials (${items.length}):\n${lines.join("\n")}`,
+          text: `Credentials you can access (${items.length}):\n${lines.join("\n")}\n\nUse a ref with credential_exec to run a command with it injected.`,
         }],
       };
     } catch (error: any) {
@@ -2225,6 +2235,129 @@ const handlers: Record<string, HandlerFn> = {
             type: "text",
             text: `No credential found for ref '${args.ref}'`,
           }],
+        };
+      }
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+  },
+
+  // --- Sharing -------------------------------------------------------------
+  // A share conveys the owner's full access (use + read). No reduced tier
+  // exists on purpose: credential_exec takes an arbitrary argv, so a
+  // "use but never reveal" level would be bypassable and would only give
+  // false assurance. Management stays owner-only, enforced server-side.
+
+  async credential_share(args, { cpClient }) {
+    const ref = args.ref as string;
+    const email = args.email as string | undefined;
+    const userId = args.user_id as string | undefined;
+
+    if (!email && !userId) {
+      return {
+        content: [{
+          type: "text",
+          text: "Provide either 'email' or 'user_id' of the org member to share with.",
+        }],
+        isError: true,
+      };
+    }
+    if (email && userId) {
+      return {
+        content: [{ type: "text", text: "Provide either 'email' or 'user_id', not both." }],
+        isError: true,
+      };
+    }
+
+    try {
+      const share = await cpClient.shareCredential(ref, (userId ?? email) as string);
+      const who = share?.email || share?.name || share?.grantee_user_id || email || userId;
+      return {
+        content: [{
+          type: "text",
+          text:
+            `Credential '${ref}' is now shared with ${who}.\n` +
+            "They have the same access you do: they can use it and read its value.\n" +
+            "You remain the only one who can share, revoke, overwrite or delete it.\n" +
+            "Revoking later stops future access but cannot un-read what was already read — rotate the secret if it may leak.",
+        }],
+      };
+    } catch (error: any) {
+      const status = error?.response?.status;
+      const detail = error?.response?.data?.detail;
+      if (status === 404 || status === 400) {
+        return {
+          content: [{ type: "text", text: detail || `Could not share '${ref}'.` }],
+          isError: true,
+        };
+      }
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+  },
+
+  async credential_unshare(args, { cpClient }) {
+    const ref = args.ref as string;
+    const userId = args.user_id as string;
+    try {
+      await cpClient.revokeCredentialShare(ref, userId);
+      return {
+        content: [{
+          type: "text",
+          text:
+            `Access to '${ref}' revoked for ${userId}.\n` +
+            "This stops FUTURE access only. If the secret may have been read and misused, rotate it.",
+        }],
+      };
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        return {
+          content: [{
+            type: "text",
+            text: error?.response?.data?.detail || `No share found for '${ref}' and that user.`,
+          }],
+          isError: true,
+        };
+      }
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+  },
+
+  async credential_shares(args, { cpClient }) {
+    const ref = args.ref as string;
+    try {
+      const result = await cpClient.listCredentialShares(ref);
+      const items = result?.items || [];
+      if (items.length === 0) {
+        return {
+          content: [{ type: "text", text: `Credential '${ref}' is not shared with anyone.` }],
+        };
+      }
+      const lines = items.map((sh: any) => {
+        const who = sh.email || sh.name || sh.grantee_user_id;
+        return `- ${who} (user_id: ${sh.grantee_user_id}, since ${sh.granted_at})`;
+      });
+      return {
+        content: [{
+          type: "text",
+          text:
+            `'${ref}' is shared with ${items.length} member${items.length === 1 ? "" : "s"}:\n` +
+            lines.join("\n") +
+            "\n\nEach of them has the same access you do. Use credential_unshare(ref, user_id) to revoke.",
+        }],
+      };
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        return {
+          content: [{
+            type: "text",
+            text: error?.response?.data?.detail || `You do not own a credential named '${ref}'`,
+          }],
+          isError: true,
         };
       }
       const apiErr = handleApiError(error);

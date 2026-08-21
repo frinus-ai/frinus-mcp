@@ -71,6 +71,9 @@ export interface CpClientInterface {
   getCredential(integrationRef: string): Promise<any>;
   listCredentials(): Promise<any>;
   deleteCredential(integrationRef: string): Promise<void>;
+  listCredentialShares(integrationRef: string): Promise<any>;
+  shareCredential(integrationRef: string, userIdOrEmail: string): Promise<any>;
+  revokeCredentialShare(integrationRef: string, granteeUserId: string): Promise<void>;
 }
 
 /** Public surface of the MemoryClient used by handlers. */
