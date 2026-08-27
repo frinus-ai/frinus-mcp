@@ -47,7 +47,20 @@ Scopes:
         },
         content: {
           type: "string",
-          description: "The memory content to store",
+          // MIRRORS memory/src/config.py::MAX_MEMORY_CONTENT_CHARS, which is the
+          // single source of truth and where the derivation is documented.
+          // This is a cross-language copy — if the backend constant changes,
+          // change it here too (and in the description below). The live value
+          // is also served at GET / as limits.memory_content_max_chars.
+          maxLength: 16000,
+          description:
+            "The memory content to store. HARD LIMIT: 16000 characters — " +
+            "content above this is REJECTED (HTTP 422), nothing is saved. " +
+            "Check the length before calling. If your text is longer, split " +
+            "it into several smaller, self-contained memories (one fact, " +
+            "decision or procedure each) and store them one by one; do not " +
+            "truncate it into a single call. Smaller memories are also " +
+            "retrieved more accurately by semantic search.",
         },
         memory_type: {
           type: "string",

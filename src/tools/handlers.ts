@@ -220,6 +220,30 @@ export function handleApiError(error: any): ToolResult | null {
       isError: true,
     };
   }
+  if (status === 422) {
+    // Request validation failure. The backend's `detail` carries the ONLY
+    // actionable part (e.g. the memory-content size limit: what the ceiling
+    // is, what was received, and to split the text into smaller memories).
+    // Without this branch the raw axios error propagates as the useless
+    // "Request failed with status code 422" and that guidance never reaches
+    // the caller — which is the whole point of returning it.
+    const detail = error?.response?.data?.detail;
+    const text = Array.isArray(detail)
+      ? detail
+          .map((d: any) => {
+            const field = Array.isArray(d?.loc) ? d.loc.filter((p: any) => p !== "body").join(".") : null;
+            const msg = String(d?.msg ?? "invalid value").replace(/^Value error,\s*/, "");
+            return field ? `${field}: ${msg}` : msg;
+          })
+          .join("\n")
+      : typeof detail === "string"
+        ? detail
+        : "The request was rejected as invalid.";
+    return {
+      content: [{ type: "text", text: `Validation error (422). Nothing was saved.\n${text}` }],
+      isError: true,
+    };
+  }
   return null; // Not a known error, let it propagate
 }
 
