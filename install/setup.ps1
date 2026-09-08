@@ -23,7 +23,7 @@ $env:WSL_UTF8 = 1
 
 # Endereco de onde o instalador do Ubuntu e baixado (HTTPS).
 # >>> A equipe RDX define este endereco antes de distribuir. <<<
-$InstallUrl = if ($env:FRINUS_INSTALL_URL) { $env:FRINUS_INSTALL_URL } else { 'https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v2/install/install.sh' }
+$InstallUrl = if ($env:FRINUS_INSTALL_URL) { $env:FRINUS_INSTALL_URL } else { 'https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v3/install/install.sh' }
 $Distro     = 'Ubuntu'
 $Suporte    = 'Se precisar de ajuda, chame a equipe RDX que te enviou este instalador.'
 
@@ -60,10 +60,21 @@ try { Get-Command wsl.exe -ErrorAction Stop | Out-Null; $temWsl = $true } catch 
 $temDistro = $false
 if ($temWsl) {
   # 'wsl -l -q' lista as distribuicoes instaladas (uma por linha).
+  # ATENCAO: em um Windows onde o wsl.exe existe mas NENHUMA distro foi
+  # instalada, o comando sai com codigo != 0 e imprime texto de ajuda no
+  # STDOUT ("...nao ha distribuicoes instaladas / visite a Microsoft Store").
+  # Sem as duas guardas abaixo essa frase era aceita como se fosse o nome de
+  # uma distro: o script pulava a instalacao do Ubuntu e depois falhava no
+  # 'wsl -d <frase>', mandando o cliente abrir um Ubuntu que nao existe.
   try {
-    $lista = @( (wsl.exe -l -q) 2>$null |
+    $saida = @( (wsl.exe -l -q) 2>$null |
                 ForEach-Object { ($_ -replace "`0", '').Trim() } |
                 Where-Object { $_ -ne '' } )
+    # Guarda 1: codigo de saida != 0 significa que nao ha lista utilizavel.
+    if ($LASTEXITCODE -ne 0) { $saida = @() }
+    # Guarda 2: nome de distro do WSL nao tem espaco e e curto. Isso descarta
+    # qualquer frase de erro/ajuda que tenha escapado pelo STDOUT.
+    $lista = @( $saida | Where-Object { $_ -notmatch '\s' -and $_.Length -le 64 } )
     if ($lista -contains $Distro) { $temDistro = $true }
     elseif ($lista.Count -gt 0)  { $temDistro = $true; $Distro = $lista[0] }  # usa a distro que ja existe
   } catch { $temDistro = $false }
