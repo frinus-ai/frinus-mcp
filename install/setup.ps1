@@ -30,7 +30,7 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::S
 $env:WSL_UTF8 = 1
 
 # Versao publicada. Ao lancar uma nova tag, troque SO esta linha (e o README).
-$Tag        = 'client-installer-v4'
+$Tag        = 'client-installer-v5'
 $Base       = "https://raw.githubusercontent.com/frinus-ai/frinus-mcp/$Tag/install"
 $SelfUrl    = if ($env:FRINUS_SETUP_URL)   { $env:FRINUS_SETUP_URL }   else { "$Base/setup.ps1" }
 $InstallUrl = if ($env:FRINUS_INSTALL_URL) { $env:FRINUS_INSTALL_URL } else { "$Base/install.sh" }
@@ -153,7 +153,10 @@ function Criar-Atalho {
     $lnk.TargetPath       = $wsl
     $lnk.Arguments        = "-d $Distro --cd ~ -- bash -lic claude"
     $lnk.WorkingDirectory = $env:USERPROFILE
-    $lnk.IconLocation     = "$wsl,0"
+    # Logo do Frinus; se o download falhar, fica o icone do proprio WSL.
+    $ico = Join-Path $Pasta 'frinus.ico'
+    try { Invoke-WebRequest -Uri "$Base/frinus.ico" -OutFile $ico -UseBasicParsing -TimeoutSec 60 } catch {}
+    if ((Test-Path $ico) -and ((Get-Item $ico).Length -gt 0)) { $lnk.IconLocation = "$ico,0" } else { $lnk.IconLocation = "$wsl,0" }
     $lnk.Description      = 'Frinus - assistente com memoria'
     $lnk.Save()
     return $true

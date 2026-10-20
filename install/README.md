@@ -10,6 +10,7 @@ PT-BR, sem termos técnicos.
 | Arquivo | Onde roda | Papel |
 |--------|-----------|-------|
 | [`Instalar-Frinus.cmd`](Instalar-Frinus.cmd) | Windows (duplo clique) | Atalho de 1 clique: só chama o `setup.ps1` da tag publicada. É o arquivo que se distribui (pendrive, pasta de rede, e-mail). |
+| [`frinus.ico`](frinus.ico) | Windows | Ícone do atalho "Frinus" (gerado de `frontend/public/logo.svg`, 16–256 px). Se o download falhar, o atalho usa o ícone do WSL. |
 | [`setup.ps1`](setup.ps1) | Windows (PowerShell) | Pede admin sozinho, pede a chave, instala o WSL2/Ubuntu, **reinicia e continua sozinho**, cria usuário/senha do Ubuntu, roda o instalador lá dentro e cria o atalho "Frinus" na área de trabalho. |
 | [`install.sh`](install.sh) | Dentro do WSL2, ou Linux/macOS direto | Instala o que faltar, conecta a memória e valida com um teste real. |
 
@@ -21,7 +22,7 @@ oficial leva o cliente para dentro do WSL2, onde funciona como no Linux.
 **Windows** — dê **duplo clique** em `Instalar-Frinus.cmd`. Ou, num PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v4/install/setup.ps1 | iex
+irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v5/install/setup.ps1 | iex
 ```
 
 Quem instala só faz isto:
@@ -42,10 +43,10 @@ de novo.
 **Linux / macOS** (ou dentro do Ubuntu, se preferir manual):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v4/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v5/install/install.sh | bash
 ```
 
-Os endereços apontam para a **tag imutável** `client-installer-v4` — ver
+Os endereços apontam para a **tag imutável** `client-installer-v5` — ver
 "Versionamento" abaixo.
 
 ## O que o cliente precisa ter em mãos
@@ -62,14 +63,15 @@ executar, os hashes SHA-256 dos scripts desta release são:
 
 ```
 install.sh            ca7ca1508e0e377e173efcccd1fa67e7bf6518cefb87dce277028fa8133b0f76
-setup.ps1             64f7c0c39c461b1be09687d5d8b67815108bb591e33bb35b757da7a10488ee8d
-Instalar-Frinus.cmd   9ed1da26d4397a7fe750db2225d2a3484d72e59904100b74c98db1c083410e40
+setup.ps1             fb908c55ce8ef0a3b409e75eceed8f5bf9234e111353a07cd32f335f8dbef9b2
+Instalar-Frinus.cmd   f92e61fbb6005c9d6913a18441df72ddb17f85f74b46b422b311a4ccbe63894a
+frinus.ico            d5ad20d853234a77df9d4e667e6eec53b0cd97933d2a937eaff7573d5effa8b6
 ```
 
 Conferir no Linux/macOS antes de rodar:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v4/install/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v5/install/install.sh -o install.sh
 sha256sum install.sh   # deve bater com o hash acima
 less install.sh        # revise, depois: bash install.sh
 ```
@@ -77,7 +79,7 @@ less install.sh        # revise, depois: bash install.sh
 Conferir no Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v4/install/setup.ps1 -OutFile setup.ps1
+irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v5/install/setup.ps1 -OutFile setup.ps1
 Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
 ```
 
@@ -101,7 +103,7 @@ Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
 
 ## Versionamento (para mantenedores)
 
-Os one-liners apontam para a **tag** `client-installer-v4`, não para `main`.
+Os one-liners apontam para a **tag** `client-installer-v5`, não para `main`.
 Motivo: `main` é mutável — qualquer commit no repo mudaria o que os clientes já
 distribuídos executam. Uma tag é imutável e intencional: o cliente sempre roda
 exatamente o que foi revisado naquela release.
@@ -110,7 +112,7 @@ Para publicar/atualizar:
 
 ```bash
 # na branch com estes arquivos, após revisar:
-git tag client-installer-v4        # ou -v3, -v4... a cada nova release do instalador
+git tag client-installer-v5        # ou -v3, -v4... a cada nova release do instalador
 git push origin main --tags        # ou push da branch + tag
 
 # ao mudar os scripts: recalcule os hashes e crie uma tag NOVA (não mova a antiga)
