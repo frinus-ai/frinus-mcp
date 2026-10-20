@@ -169,6 +169,10 @@ fi
 
 if [ "$LOGADO" = "sim" ]; then
   pulou "Você já está logado na sua conta Claude — pulando."
+elif [ "${FRINUS_DEFER_LOGIN:-}" = "1" ]; then
+  # Instalação em lote (Windows): o login fica para o primeiro uso do assistente,
+  # que pede a conta Claude sozinho ao abrir. A memória não depende do login.
+  pulou "O login na conta Claude será pedido na primeira vez que você abrir o assistente."
 else
   printf '%sAgora abre a etapa de login. Vai aparecer um endereço/código na tela:\n' "$DIM"
   printf '  • copie o endereço no seu navegador (ou siga as instruções que aparecerem);\n'

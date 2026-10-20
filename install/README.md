@@ -9,7 +9,8 @@ PT-BR, sem termos técnicos.
 
 | Arquivo | Onde roda | Papel |
 |--------|-----------|-------|
-| [`setup.ps1`](setup.ps1) | Windows (PowerShell) | Garante o WSL2/Ubuntu (instala + pede reboot na 1ª vez) e depois roda o instalador dentro do Ubuntu. |
+| [`Instalar-Frinus.cmd`](Instalar-Frinus.cmd) | Windows (duplo clique) | Atalho de 1 clique: só chama o `setup.ps1` da tag publicada. É o arquivo que se distribui (pendrive, pasta de rede, e-mail). |
+| [`setup.ps1`](setup.ps1) | Windows (PowerShell) | Pede admin sozinho, pede a chave, instala o WSL2/Ubuntu, **reinicia e continua sozinho**, cria usuário/senha do Ubuntu, roda o instalador lá dentro e cria o atalho "Frinus" na área de trabalho. |
 | [`install.sh`](install.sh) | Dentro do WSL2, ou Linux/macOS direto | Instala o que faltar, conecta a memória e valida com um teste real. |
 
 No **Windows nativo** a conexão de memória não é confiável; por isso o caminho
@@ -17,20 +18,34 @@ oficial leva o cliente para dentro do WSL2, onde funciona como no Linux.
 
 ## One-liner (o que o cliente cola)
 
-**Windows** — abra o PowerShell **como Administrador** (na 1ª vez, por causa da
-instalação do WSL2):
+**Windows** — dê **duplo clique** em `Instalar-Frinus.cmd`. Ou, num PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v3/install/setup.ps1 | iex
+irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v4/install/setup.ps1 | iex
 ```
+
+Quem instala só faz isto:
+1. clica em **Sim** quando o Windows pede permissão;
+2. cola a **chave do Frinus** (conferida na hora; uma chave errada é recusada e pedida de novo);
+3. espera o computador **reiniciar sozinho** (se o Windows exigir) e entra no Windows; a
+   instalação **continua sozinha** depois do login;
+4. digita o **usuário e a senha do Ubuntu** (a conta é criada pelo instalador);
+5. no fim, aparece o atalho **Frinus** na área de trabalho.
+
+O login na conta Claude fica para a **primeira vez que o atalho é aberto** (o Claude
+pede sozinho). Isso é por design: o login é OAuth no navegador e não dá para automatizar.
+
+Requisito de máquina: **virtualização ligada na BIOS** (Intel VT-x / AMD-V). Se estiver
+desligada, o instalador para com uma mensagem clara; depois que o TI ligar, basta rodar
+de novo.
 
 **Linux / macOS** (ou dentro do Ubuntu, se preferir manual):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v3/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v4/install/install.sh | bash
 ```
 
-Os endereços apontam para a **tag imutável** `client-installer-v3` — ver
+Os endereços apontam para a **tag imutável** `client-installer-v4` — ver
 "Versionamento" abaixo.
 
 ## O que o cliente precisa ter em mãos
@@ -46,14 +61,15 @@ Os endereços apontam para a **tag imutável** `client-installer-v3` — ver
 executar, os hashes SHA-256 dos scripts desta release são:
 
 ```
-install.sh   b89490d9613707c2e5c65a47de5163c166896013a982fb87520b08333cc943e1
-setup.ps1    78a36802015eb6273d3139e895bad2184087c17dd9371622d44fa3c3e0b427b9
+install.sh            ca7ca1508e0e377e173efcccd1fa67e7bf6518cefb87dce277028fa8133b0f76
+setup.ps1             64f7c0c39c461b1be09687d5d8b67815108bb591e33bb35b757da7a10488ee8d
+Instalar-Frinus.cmd   9ed1da26d4397a7fe750db2225d2a3484d72e59904100b74c98db1c083410e40
 ```
 
 Conferir no Linux/macOS antes de rodar:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v3/install/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v4/install/install.sh -o install.sh
 sha256sum install.sh   # deve bater com o hash acima
 less install.sh        # revise, depois: bash install.sh
 ```
@@ -61,7 +77,7 @@ less install.sh        # revise, depois: bash install.sh
 Conferir no Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v3/install/setup.ps1 -OutFile setup.ps1
+irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v4/install/setup.ps1 -OutFile setup.ps1
 Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
 ```
 
@@ -85,7 +101,7 @@ Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
 
 ## Versionamento (para mantenedores)
 
-Os one-liners apontam para a **tag** `client-installer-v3`, não para `main`.
+Os one-liners apontam para a **tag** `client-installer-v4`, não para `main`.
 Motivo: `main` é mutável — qualquer commit no repo mudaria o que os clientes já
 distribuídos executam. Uma tag é imutável e intencional: o cliente sempre roda
 exatamente o que foi revisado naquela release.
@@ -94,7 +110,7 @@ Para publicar/atualizar:
 
 ```bash
 # na branch com estes arquivos, após revisar:
-git tag client-installer-v3        # ou -v3, -v4... a cada nova release do instalador
+git tag client-installer-v4        # ou -v3, -v4... a cada nova release do instalador
 git push origin main --tags        # ou push da branch + tag
 
 # ao mudar os scripts: recalcule os hashes e crie uma tag NOVA (não mova a antiga)
@@ -102,8 +118,9 @@ sha256sum install/install.sh install/setup.ps1
 ```
 
 Para trocar a versão que os clientes usam, atualize o número da tag nos one-liners
-(neste README e no material comercial). O `setup.ps1` também carrega a tag no seu
-URL default do `install.sh` — mantenha os dois na mesma tag.
+(neste README e no material comercial). O `setup.ps1` carrega a tag na variável `$Tag`
+(usada para baixar o `install.sh` e a si mesmo após o reinício), e o `Instalar-Frinus.cmd`
+tem a URL com a tag — mantenha os três na mesma tag.
 
 ---
 *Uma solução RDX.*
