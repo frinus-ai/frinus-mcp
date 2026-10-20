@@ -30,7 +30,7 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::S
 $env:WSL_UTF8 = 1
 
 # Versao publicada. Ao lancar uma nova tag, troque SO esta linha (e o README).
-$Tag        = 'client-installer-v5'
+$Tag        = 'client-installer-v6'
 $Base       = "https://raw.githubusercontent.com/frinus-ai/frinus-mcp/$Tag/install"
 $SelfUrl    = if ($env:FRINUS_SETUP_URL)   { $env:FRINUS_SETUP_URL }   else { "$Base/setup.ps1" }
 $InstallUrl = if ($env:FRINUS_INSTALL_URL) { $env:FRINUS_INSTALL_URL } else { "$Base/install.sh" }

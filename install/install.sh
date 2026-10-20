@@ -353,26 +353,46 @@ passo "Gravando uma memória de teste e lendo de volta..."
 CARIMBO="INSTALACAO-$(date +%s)"
 ALVO_ID="${CEREBRO_ID:-00000000-0000-0000-0000-000000000001}"
 
-CRIA="$(curl -fsS -X POST "$MEMORY_URL/memories" \
+RESP_CRIA="$(mktemp)"
+COD_CRIA="$(curl -sS -o "$RESP_CRIA" -w '%{http_code}' -X POST "$MEMORY_URL/memories" \
   -H "X-API-Key: $CHAVE" -H "Content-Type: application/json" \
-  -d "{\"agent_id\":\"$ALVO_ID\",\"content\":\"$CARIMBO memoria de teste da instalacao, pode apagar\",\"memory_type\":\"episodic\",\"importance\":0.1,\"scope\":\"user\"}" 2>/dev/null)" \
-  || parar "Não consegui gravar a memória de teste." "Rode o instalador de novo. Se continuar, peça uma chave nova à equipe RDX."
+  -d "{\"agent_id\":\"$ALVO_ID\",\"content\":\"$CARIMBO memoria de teste da instalacao, pode apagar\",\"memory_type\":\"episodic\",\"importance\":0.1,\"scope\":\"user\"}" 2>/dev/null || echo 000)"
+CRIA="$(cat "$RESP_CRIA" 2>/dev/null || true)"; rm -f "$RESP_CRIA"
 
-MEM_ID="$(printf '%s' "$CRIA" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).id||"")}catch(e){}})')"
-
-ENCONTROU="$(curl -fsS -X POST "$MEMORY_URL/memories/search" \
-  -H "X-API-Key: $CHAVE" -H "Content-Type: application/json" \
-  -d "{\"query_text\":\"$CARIMBO\",\"limit\":3}" 2>/dev/null \
-  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const a=JSON.parse(s);process.stdout.write(a.some(m=>(m.content||"").includes(process.argv[1]))?"sim":"nao")}catch(e){process.stdout.write("nao")}})' "$CARIMBO")"
-
-# Limpa a memória de teste para não poluir a base do cliente.
-if [ -n "$MEM_ID" ]; then
-  curl -fsS -o /dev/null -X DELETE "$MEMORY_URL/memories/$MEM_ID" -H "X-API-Key: $CHAVE" 2>/dev/null || true
+if [ "$COD_CRIA" = "401" ]; then
+  parar "A memória recusou a sua chave." "Gere uma chave nova no painel do Frinus e rode o instalador de novo."
 fi
 
-[ "$ENCONTROU" = "sim" ] \
-  && ok "Memória gravada e recuperada com sucesso." \
-  || parar "A memória foi gravada, mas não consegui confirmar a leitura." "Rode o instalador de novo. Se continuar, peça ajuda à equipe RDX."
+if [ "$COD_CRIA" = "201" ] || [ "$COD_CRIA" = "200" ]; then
+  MEM_ID="$(printf '%s' "$CRIA" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).id||"")}catch(e){}})')"
+
+  ENCONTROU="$(curl -fsS -X POST "$MEMORY_URL/memories/search" \
+    -H "X-API-Key: $CHAVE" -H "Content-Type: application/json" \
+    -d "{\"query_text\":\"$CARIMBO\",\"limit\":3}" 2>/dev/null \
+    | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const a=JSON.parse(s);process.stdout.write(a.some(m=>(m.content||"").includes(process.argv[1]))?"sim":"nao")}catch(e){process.stdout.write("nao")}})' "$CARIMBO")"
+
+  # Limpa a memória de teste para não poluir a base do cliente.
+  if [ -n "$MEM_ID" ]; then
+    curl -fsS -o /dev/null -X DELETE "$MEMORY_URL/memories/$MEM_ID" -H "X-API-Key: $CHAVE" 2>/dev/null || true
+  fi
+
+  [ "$ENCONTROU" = "sim" ] \
+    && ok "Memória gravada e recuperada com sucesso." \
+    || parar "A memória foi gravada, mas não consegui confirmar a leitura." "Rode o instalador de novo. Se continuar, peça ajuda à equipe RDX."
+else
+  # Gravação não aceita (perfil "Consulta" não grava, por desenho). A instalação
+  # está completa; confirmamos que a LEITURA funciona e seguimos.
+  COD_LER="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$MEMORY_URL/memories/search" \
+    -H "X-API-Key: $CHAVE" -H "Content-Type: application/json" \
+    -d '{"query_text":"teste de instalacao","limit":1}' 2>/dev/null || echo 000)"
+  if [ "$COD_LER" = "200" ]; then
+    ok "Leitura da memória funcionando."
+    aviso "Esta conta pode CONSULTAR a memória, mas não GRAVAR (código $COD_CRIA)."
+    printf '%s\n' '  Se esta pessoa também precisa ensinar coisas ao assistente, peça à equipe RDX' '  para mudar o perfil dela para "Treinador". Não precisa reinstalar.'
+  else
+    parar "Não consegui gravar nem ler a memória de teste (códigos $COD_CRIA/$COD_LER)." "Rode o instalador de novo. Se continuar, peça ajuda à equipe RDX."
+  fi
+fi
 
 # ===========================================================================
 # Fim
