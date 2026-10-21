@@ -30,7 +30,7 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::S
 $env:WSL_UTF8 = 1
 
 # Versao publicada. Ao lancar uma nova tag, troque SO esta linha (e o README).
-$Tag        = 'client-installer-v6'
+$Tag        = 'client-installer-v7'
 $Base       = "https://raw.githubusercontent.com/frinus-ai/frinus-mcp/$Tag/install"
 $SelfUrl    = if ($env:FRINUS_SETUP_URL)   { $env:FRINUS_SETUP_URL }   else { "$Base/setup.ps1" }
 $InstallUrl = if ($env:FRINUS_INSTALL_URL) { $env:FRINUS_INSTALL_URL } else { "$Base/install.sh" }
@@ -148,17 +148,25 @@ function Reiniciar-Computador {
 function Criar-Atalho {
   try {
     $wsl = Join-Path $env:SystemRoot 'System32\wsl.exe'
+    $arq = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Frinus.lnk'
+    # Apaga o atalho antigo (versoes anteriores usavam o icone do WSL) para o
+    # Windows nao reaproveitar o icone guardado em cache.
+    if (Test-Path $arq) { Remove-Item $arq -Force -ErrorAction SilentlyContinue }
     $sh  = New-Object -ComObject WScript.Shell
-    $lnk = $sh.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Frinus.lnk'))
+    $lnk = $sh.CreateShortcut($arq)
     $lnk.TargetPath       = $wsl
-    $lnk.Arguments        = "-d $Distro --cd ~ -- bash -lic claude"
+    # 'frinus' = lancador criado pelo install.sh: claude --agent frinus
+    $lnk.Arguments        = "-d $Distro --cd ~ -- bash -lic ~/.local/bin/frinus"
     $lnk.WorkingDirectory = $env:USERPROFILE
-    # Logo do Frinus; se o download falhar, fica o icone do proprio WSL.
-    $ico = Join-Path $Pasta 'frinus.ico'
-    try { Invoke-WebRequest -Uri "$Base/frinus.ico" -OutFile $ico -UseBasicParsing -TimeoutSec 60 } catch {}
-    if ((Test-Path $ico) -and ((Get-Item $ico).Length -gt 0)) { $lnk.IconLocation = "$ico,0" } else { $lnk.IconLocation = "$wsl,0" }
+    # Logo do Frinus. Nome com a versao: caminho novo = icone novo no cache.
+    $ico = Join-Path $Pasta "frinus-$Tag.ico"
+    for ($i = 0; $i -lt 3 -and -not ((Test-Path $ico) -and ((Get-Item $ico).Length -gt 1000)); $i++) {
+      try { Invoke-WebRequest -Uri "$Base/frinus.ico" -OutFile $ico -UseBasicParsing -TimeoutSec 60 } catch { Start-Sleep -Seconds 3 }
+    }
+    if ((Test-Path $ico) -and ((Get-Item $ico).Length -gt 1000)) { $lnk.IconLocation = "$ico,0" } else { $lnk.IconLocation = "$wsl,0" }
     $lnk.Description      = 'Frinus - assistente com memoria'
     $lnk.Save()
+    try { Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\ie4uinit.exe') -ArgumentList '-show' -WindowStyle Hidden -ErrorAction SilentlyContinue } catch {}
     return $true
   } catch { return $false }
 }
@@ -422,7 +430,7 @@ Apagar-Chave
 # 5) Atalho na area de trabalho
 # ---------------------------------------------------------------------------
 if (Criar-Atalho) { Ok "Atalho 'Frinus' criado na area de trabalho." }
-else { Aviso "Nao consegui criar o atalho. Para abrir: menu Iniciar > Ubuntu > digite claude." }
+else { Aviso "Nao consegui criar o atalho. Para abrir: menu Iniciar > Ubuntu > digite frinus." }
 
 Titulo "Instalacao concluida!"
 Write-Host ""

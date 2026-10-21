@@ -326,6 +326,31 @@ else
   pulou "Sem assistente principal configurado — pulando a equipe por enquanto."
 fi
 
+# Comando "frinus": abre o assistente já como o agente principal (--agent frinus).
+# É o que o atalho do Windows chama. Script (não só alias) para funcionar também
+# fora de shell interativo; o alias cobre quem digita no terminal.
+mkdir -p "$HOME/.local/bin"
+LANCADOR="$HOME/.local/bin/frinus"
+if [ -f "$AGENTS_DIR/frinus.md" ]; then AGENTE_ARGS='--agent frinus'; else AGENTE_ARGS=''; fi
+cat > "$LANCADOR" <<EOF
+#!/usr/bin/env bash
+# Gerado pelo instalador Frinus — abre o assistente com memória.
+if ! command -v claude >/dev/null 2>&1; then
+  export NVM_DIR="\$HOME/.nvm"; [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
+fi
+exec claude $AGENTE_ARGS "\$@"
+EOF
+chmod +x "$LANCADOR"
+for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
+  case "$RC" in *zshrc) [ -f "$RC" ] || [ "$(basename "${SHELL:-}")" = "zsh" ] || continue ;; esac
+  touch "$RC"
+  if grep -q "FRINUS:ALIAS" "$RC"; then
+    sed -i.bak '/# FRINUS:ALIAS/d' "$RC" && rm -f "$RC.bak"
+  fi
+  printf 'alias frinus="$HOME/.local/bin/frinus"  # FRINUS:ALIAS\n' >> "$RC"
+done
+ok "Comando 'frinus' criado (abre o assistente com a memória e a equipe)."
+
 # ===========================================================================
 # 8) Teste de verdade: gravar e ler uma memória
 # ===========================================================================
@@ -401,7 +426,7 @@ titulo "Tudo pronto! 🎉"
 printf '%sO seu assistente agora tem memória, ligada à conta de %s%s%s.%s\n\n' "$DIM" "$B" "$EMPRESA" "$FIM$DIM" "$FIM"
 printf '%sComo usar a partir de agora:%s\n' "$B" "$FIM"
 printf '  1. Abra o Ubuntu (no Windows) ou o terminal (no Mac/Linux).\n'
-printf '  2. Digite %sclaude%s e pressione ENTER.\n' "$B" "$FIM"
+printf '  2. Digite %sfrinus%s e pressione ENTER.\n' "$B" "$FIM"
 printf '  3. Peça algo e mande ele lembrar. Ex.: %s"Guarde na memória: nossa reunião semanal é toda terça às 10h."%s\n' "$DIM" "$FIM"
 printf '  4. Depois, em outra conversa, pergunte: %s"Que dia é a nossa reunião semanal?"%s\n\n' "$DIM" "$FIM"
 printf '%s%s%s\n\n' "$DIM" "Uma solução RDX." "$FIM"
