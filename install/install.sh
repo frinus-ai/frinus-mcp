@@ -54,7 +54,7 @@ trap 'parar "Algo não saiu como esperado durante a instalação." "Tente rodar 
 # ---------------------------------------------------------------------------
 CP_URL="${FRINUS_CP_URL:-https://frinus-api.rdxsec.com.br}"
 MEMORY_URL="${MEMORY_SERVICE_URL:-https://frinus-memory.rdxsec.com.br}"
-ICONE_URL="https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v8/install/frinus.ico"
+ICONE_URL="https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v9/install/frinus.ico"
 NOME_CONEXAO="frinus-mcp"   # nome interno da conexão (mantém tudo consistente)
 
 titulo "Frinus — vamos dar memória ao seu assistente"
@@ -141,7 +141,7 @@ fi
 if [ -z "$CHAVE" ]; then
   printf '%sCole a chave que a equipe RDX te enviou (começa com "sk-frinus-").\nEla NÃO vai aparecer na tela enquanto você cola — é normal, é por segurança.%s\n' "$DIM" "$FIM"
   printf 'Chave: '
-  IFS= read -rs CHAVE || true
+  if { : </dev/tty; } 2>/dev/null; then IFS= read -rs CHAVE </dev/tty || true; else IFS= read -rs CHAVE || true; fi
   printf '\n'
 fi
 CHAVE="$(printf '%s' "$CHAVE" | tr -d '[:space:]')"
@@ -209,8 +209,8 @@ else
   printf '  • entre com a sua conta Claude (plano Pro ou Max);\n'
   printf '  • quando terminar, esta janela segue sozinha.%s\n\n' "$FIM"
   printf 'Pressione ENTER para começar o login... '
-  read -r _ || true
-  claude auth login || parar "O login não foi concluído." "Rode o instalador de novo e complete o login na sua conta Claude."
+  if { : </dev/tty; } 2>/dev/null; then read -r _ </dev/tty || true; else read -r _ || true; fi
+  { if { : </dev/tty; } 2>/dev/null; then claude auth login </dev/tty; else claude auth login; fi; } || parar "O login não foi concluído." "Rode o instalador de novo e complete o login na sua conta Claude."
   LOGADO="$(claude auth status 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).loggedIn?"sim":"nao")}catch(e){process.stdout.write("nao")}})' 2>/dev/null || echo nao)"
   [ "$LOGADO" = "sim" ] || parar "O login ainda não foi concluído." "Rode o instalador de novo e finalize o login na sua conta Claude."
   ok "Login concluído."

@@ -22,7 +22,7 @@ oficial leva o cliente para dentro do WSL2, onde funciona como no Linux.
 **Windows** — dê **duplo clique** em `Instalar-Frinus.cmd`. Ou, num PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v8/install/setup.ps1 | iex
+irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v9/install/setup.ps1 | iex
 ```
 
 Quem instala só faz isto:
@@ -43,10 +43,10 @@ de novo.
 **Linux / macOS** (ou dentro do Ubuntu, se preferir manual):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v8/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v9/install/install.sh | bash
 ```
 
-Os endereços apontam para a **tag imutável** `client-installer-v8` — ver
+Os endereços apontam para a **tag imutável** `client-installer-v9` — ver
 "Versionamento" abaixo.
 
 ## O que o cliente precisa ter em mãos
@@ -62,16 +62,16 @@ Os endereços apontam para a **tag imutável** `client-installer-v8` — ver
 executar, os hashes SHA-256 dos scripts desta release são:
 
 ```
-install.sh            3877edad40ff917e10f76bc8491d26d9940b2f5e14f10035c9ba11849fe7caf2
-setup.ps1             730eebf45fb1570c8fdd47642975a58296164fc6288ce7c6cf9e8a1cb7b7b865
-Instalar-Frinus.cmd   9f38ce322f325bd4a1361ec17522ba46916cea8b33637bce0337f77075b0d22e
+install.sh            9d2c4380067e5076d071dcabed33afdf4afb5971a3ff33392dad064d4177a17d
+setup.ps1             63622e56a499e00618e3d534b0f13810066c9b788f638465fddd59b0aaee58c6
+Instalar-Frinus.cmd   fd4dc3a436bec22589a366215bf7ecfdf34ac56f3ce185b20537871bb0e995ab
 frinus.ico            d5ad20d853234a77df9d4e667e6eec53b0cd97933d2a937eaff7573d5effa8b6
 ```
 
 Conferir no Linux/macOS antes de rodar:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v8/install/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v9/install/install.sh -o install.sh
 sha256sum install.sh   # deve bater com o hash acima
 less install.sh        # revise, depois: bash install.sh
 ```
@@ -79,7 +79,7 @@ less install.sh        # revise, depois: bash install.sh
 Conferir no Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v8/install/setup.ps1 -OutFile setup.ps1
+irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v9/install/setup.ps1 -OutFile setup.ps1
 Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
 ```
 
@@ -103,7 +103,7 @@ Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
 
 ## Versionamento (para mantenedores)
 
-Os one-liners apontam para a **tag** `client-installer-v8`, não para `main`.
+Os one-liners apontam para a **tag** `client-installer-v9`, não para `main`.
 Motivo: `main` é mutável — qualquer commit no repo mudaria o que os clientes já
 distribuídos executam. Uma tag é imutável e intencional: o cliente sempre roda
 exatamente o que foi revisado naquela release.
@@ -112,7 +112,7 @@ Para publicar/atualizar:
 
 ```bash
 # na branch com estes arquivos, após revisar:
-git tag client-installer-v8        # ou -v3, -v4... a cada nova release do instalador
+git tag client-installer-v9        # ou -v3, -v4... a cada nova release do instalador
 git push origin main --tags        # ou push da branch + tag
 
 # ao mudar os scripts: recalcule os hashes e crie uma tag NOVA (não mova a antiga)
