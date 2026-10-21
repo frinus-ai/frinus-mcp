@@ -54,6 +54,7 @@ trap 'parar "Algo não saiu como esperado durante a instalação." "Tente rodar 
 # ---------------------------------------------------------------------------
 CP_URL="${FRINUS_CP_URL:-https://frinus-api.rdxsec.com.br}"
 MEMORY_URL="${MEMORY_SERVICE_URL:-https://frinus-memory.rdxsec.com.br}"
+ICONE_URL="https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v8/install/frinus.ico"
 NOME_CONEXAO="frinus-mcp"   # nome interno da conexão (mantém tudo consistente)
 
 titulo "Frinus — vamos dar memória ao seu assistente"
@@ -108,6 +109,35 @@ titulo "2) Sua chave de acesso"
 # seguro é pedir aqui, com a digitação escondida (não aparece na tela, não fica
 # guardada no histórico).
 CHAVE="${FRINUS_API_KEY:-}"
+REAPROVEITADA="nao"
+
+# Já existe uma chave do Frinus neste computador (instalação anterior, manual ou
+# pelo Claude Desktop)? Se ela ainda for aceita, reaproveita sem perguntar.
+if [ -z "$CHAVE" ] && command -v node >/dev/null 2>&1; then
+  ACHADA="$(node -e '
+    const fs=require("fs"),path=require("path"),h=require("os").homedir();
+    const arqs=[process.env.CLAUDE_CONFIG_DIR&&path.join(process.env.CLAUDE_CONFIG_DIR,".claude.json"),
+      path.join(h,".claude.json"),path.join(h,".claude",".claude.json"),
+      path.join(h,"Library/Application Support/Claude/claude_desktop_config.json"),
+      path.join(h,".config/Claude/claude_desktop_config.json")].filter(Boolean);
+    const achar=o=>{ if(!o||typeof o!=="object") return "";
+      for(const [k,v] of Object.entries(o)){
+        if(typeof v==="string"&&/^sk-frinus-[A-Za-z0-9_-]{10,}$/.test(v.trim())&&/FRINUS_API_KEY|API_KEY/i.test(k)) return v.trim();
+        const r=achar(v); if(r) return r; }
+      return ""; };
+    for(const f of arqs){ try{ const r=achar(JSON.parse(fs.readFileSync(f,"utf8"))); if(r){process.stdout.write(r);break;} }catch(e){} }
+  ' 2>/dev/null || true)"
+  if [ -n "$ACHADA" ]; then
+    COD_ACHADA="$(curl -s -o /dev/null -w '%{http_code}' -H "X-API-Key: $ACHADA" "$CP_URL/api/v1/templates/mcp-config" 2>/dev/null || echo 000)"
+    if [ "$COD_ACHADA" = "200" ]; then
+      CHAVE="$ACHADA"; REAPROVEITADA="sim"
+      pulou "Encontrei a chave do Frinus que já estava instalada (termina em ...${CHAVE: -4}) — reaproveitando."
+    else
+      aviso "Encontrei uma chave antiga neste computador, mas ela não vale mais. Vamos usar uma nova."
+    fi
+  fi
+fi
+
 if [ -z "$CHAVE" ]; then
   printf '%sCole a chave que a equipe RDX te enviou (começa com "sk-frinus-").\nEla NÃO vai aparecer na tela enquanto você cola — é normal, é por segurança.%s\n' "$DIM" "$FIM"
   printf 'Chave: '
@@ -121,7 +151,7 @@ case "$CHAVE" in
   "") parar "Você não colou nenhuma chave." "Rode o instalador de novo e cole a chave que começa com sk-frinus-." ;;
   *)  parar "Essa chave não parece ser uma chave do Frinus." "A chave certa começa com sk-frinus-. Confira se copiou a linha inteira e tente de novo." ;;
 esac
-ok "Chave recebida."
+[ "$REAPROVEITADA" = "sim" ] || ok "Chave recebida."
 
 # ===========================================================================
 # 3) Descobrir automaticamente a empresa dona da chave
@@ -202,6 +232,18 @@ titulo "5) Conectando o assistente à sua memória"
 # vezes nunca duplica nem deixa configuração pela metade. A chave entra por
 # variável (não fica no histórico) e é gravada pelo próprio Claude.
 claude mcp remove "$NOME_CONEXAO" -s user >/dev/null 2>&1 || true
+# Mesma chave já cadastrada com OUTRO nome (instalação manual antiga)? Remove
+# para o assistente não ficar com a memória duplicada. Outras chaves/empresas
+# ficam intocadas.
+for VELHA in $(CHAVE="$CHAVE" NOME="$NOME_CONEXAO" node -e '
+  const fs=require("fs"),path=require("path"),h=require("os").homedir();
+  const f=path.join(process.env.CLAUDE_CONFIG_DIR||h,".claude.json");
+  try{ const j=JSON.parse(fs.readFileSync(f,"utf8"));
+    for(const [n,v] of Object.entries(j.mcpServers||{}))
+      if(n!==process.env.NOME&&/^[A-Za-z0-9_.-]+$/.test(n)&&JSON.stringify(v).includes(process.env.CHAVE)) console.log(n);
+  }catch(e){}' 2>/dev/null); do
+  claude mcp remove "$VELHA" -s user >/dev/null 2>&1 && pulou "Conexão antiga \"$VELHA\" substituída pela nova."
+done
 FRINUS_KEY_TMP="$CHAVE" claude mcp add "$NOME_CONEXAO" -s user \
   -e FRINUS_API_KEY="$CHAVE" \
   -- npx -y frinus-mcp@latest >/dev/null 2>&1 \
@@ -350,6 +392,19 @@ for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
   printf 'alias frinus="$HOME/.local/bin/frinus"  # FRINUS:ALIAS\n' >> "$RC"
 done
 ok "Comando 'frinus' criado (abre o assistente com a memória e a equipe)."
+
+# Mac: atalho clicável "Frinus" na Mesa, com a logo (abre o Terminal já no assistente).
+if [ "$(uname -s)" = "Darwin" ] && [ -d "$HOME/Desktop" ]; then
+  ATALHO_MAC="$HOME/Desktop/Frinus.command"
+  printf '#!/bin/bash\n# Atalho Frinus — gerado pelo instalador\nclear\nexec "$HOME/.local/bin/frinus"\n' > "$ATALHO_MAC"
+  chmod +x "$ATALHO_MAC"
+  ICONE_TMP="$(mktemp -t frinus).ico"
+  if curl -fsSL "$ICONE_URL" -o "$ICONE_TMP" 2>/dev/null; then
+    osascript -l JavaScript -e "ObjC.import('AppKit'); \$.NSWorkspace.sharedWorkspace.setIconForFileOptions(\$.NSImage.alloc.initWithContentsOfFile('$ICONE_TMP'), '$ATALHO_MAC', 0)" >/dev/null 2>&1 || true
+  fi
+  rm -f "$ICONE_TMP"
+  ok "Atalho 'Frinus' criado na Mesa (dois cliques para abrir)."
+fi
 
 # ===========================================================================
 # 8) Teste de verdade: gravar e ler uma memória
