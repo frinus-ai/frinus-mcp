@@ -478,6 +478,10 @@ Directions:
           type: "number",
           description: "Importance score 0-1 (default: 0.5)",
         },
+        universe_id: {
+          type: "string",
+          description: "Optional universe UUID. Items are only promoted to long-term memory when a universe can be resolved (this field > session > agent's universe). Pass it when the agent has no universe of its own (e.g. the orchestrator), otherwise the capture is never promoted.",
+        },
       },
       required: ["session_id", "content", "direction"],
     },

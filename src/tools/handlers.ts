@@ -856,11 +856,14 @@ const handlers: Record<string, HandlerFn> = {
       direction: args.direction as string,
       agent_id: args.agent_id as string,
       importance: args.importance as number,
+      ...(args.universe_id
+        ? { metadata: { universe_id: args.universe_id as string } }
+        : {}),
     });
     return {
       content: [{
         type: "text",
-        text: `Captured to stream.\nSession: ${args.session_id}\nID: ${result.id}`,
+        text: `Captured to stream.\nSession: ${args.session_id}\nID: ${result.stream_id ?? result.id}`,
       }],
     };
   },
