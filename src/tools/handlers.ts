@@ -1344,9 +1344,12 @@ const handlers: Record<string, HandlerFn> = {
       const skills = runtime.skills || [];
       if (skills.length > 0) {
         formatted += `\n### Skills (${skills.length})\n`;
+        formatted += `Playbooks atribuídos a você. Quando a tarefa casar com a descrição, carregue o passo a passo com skill_get(slug) ANTES de agir e siga-o.\n`;
         skills.forEach((s: any) => {
           const name = s.skill_name || s.name || s.slug || s;
-          formatted += `- ${name}${s.permission ? ` (${s.permission})` : ""}\n`;
+          const slug = s.slug ? ` \`${s.slug}\`` : "";
+          const desc = s.description ? ` — ${s.description}` : "";
+          formatted += `- ${name}${slug}${desc}\n`;
         });
       }
 
@@ -1975,7 +1978,7 @@ const handlers: Record<string, HandlerFn> = {
       for (const s of skills) {
         lines.push(`- **${s.name}** (${s.slug}) [${s.category || 'uncategorized'}]`);
         if (s.description) lines.push(`  ${s.description}`);
-        lines.push(`  Handler: ${s.handler_type} | Active: ${s.is_active}`);
+        lines.push(`  id: ${s.id} | v${s.version ?? 1} | Active: ${s.is_active}`);
       }
     }
     return { content: [{ type: "text", text: lines.join("\n") }] };
@@ -1988,8 +1991,48 @@ const handlers: Record<string, HandlerFn> = {
     const lines = [`Agent ${agentId} has ${list.length} skills:\n`];
     for (const s of list) {
       lines.push(`- **${s.skill_name}** (${s.skill_slug}) — permission: ${s.permission}`);
+      if (s.skill_description) lines.push(`  ${s.skill_description}`);
     }
     return { content: [{ type: "text", text: lines.join("\n") }] };
+  },
+
+  async skill_get(args, { memoryClient }) {
+    const s = await memoryClient.getSkill(String(args.skill));
+    const lines = [
+      `# Skill: ${s.name} (\`${s.slug}\`, v${s.version ?? 1})`,
+      s.is_active === false ? "⚠️ Skill DESATIVADA — não execute; avise o usuário." : null,
+      s.description ? `Quando usar: ${s.description}` : null,
+      Array.isArray(s.credential_refs) && s.credential_refs.length
+        ? `Credenciais do cofre: ${s.credential_refs.map((r: string) => `\`${r}\``).join(", ")} — use credential_exec/credential_get com essas refs; nunca peça a senha ao usuário.`
+        : null,
+      "",
+      "## Passo a passo",
+      s.content || "(sem conteúdo)",
+    ].filter((l) => l !== null);
+    return { content: [{ type: "text", text: lines.join("\n") }] };
+  },
+
+  async skill_create(args, { memoryClient }) {
+    const s = await memoryClient.createSkill({
+      name: args.name,
+      slug: args.slug,
+      description: args.description,
+      content: args.content ?? "",
+      category: args.category,
+      credential_refs: args.credential_refs ?? [],
+    });
+    return { content: [{ type: "text", text: `✓ Skill criada: ${s.name} (\`${s.slug}\`) id=${s.id} v${s.version}` }] };
+  },
+
+  async skill_update(args, { memoryClient }) {
+    const { skill_id, ...rest } = args as Record<string, unknown>;
+    const s = await memoryClient.updateSkill(String(skill_id), rest);
+    return { content: [{ type: "text", text: `✓ Skill atualizada: ${s.name} (\`${s.slug}\`) v${s.version}` }] };
+  },
+
+  async skill_import(args, { memoryClient }) {
+    const s = await memoryClient.importSkill(String(args.skill_md), args.category as string | undefined);
+    return { content: [{ type: "text", text: `✓ Skill importada: ${s.name} (\`${s.slug}\`) id=${s.id}` }] };
   },
 
   async skill_assign(args, { memoryClient }) {

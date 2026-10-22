@@ -221,6 +221,10 @@ export interface MemoryClientInterface {
   listSkills(category?: string): Promise<any>;
   getAgentSkills(agentId: string): Promise<any>;
   assignSkill(agentId: string, skillId: string, permission?: string): Promise<any>;
+  getSkill(idOrSlug: string): Promise<any>;
+  createSkill(data: Record<string, unknown>): Promise<any>;
+  updateSkill(skillId: string, data: Record<string, unknown>): Promise<any>;
+  importSkill(skillMd: string, category?: string): Promise<any>;
   removeSkill(agentId: string, skillId: string): Promise<any>;
 }
 

@@ -665,6 +665,26 @@ export class MemoryClient implements MemoryClientInterface {
     return response.data;
   }
 
+  async getSkill(idOrSlug: string): Promise<any> {
+    const response = await this.client.get(`/skills/${encodeURIComponent(idOrSlug)}`);
+    return response.data;
+  }
+
+  async createSkill(data: Record<string, unknown>): Promise<any> {
+    const response = await this.client.post('/skills', data);
+    return response.data;
+  }
+
+  async updateSkill(skillId: string, data: Record<string, unknown>): Promise<any> {
+    const response = await this.client.patch(`/skills/${encodeURIComponent(skillId)}`, data);
+    return response.data;
+  }
+
+  async importSkill(skillMd: string, category?: string): Promise<any> {
+    const response = await this.client.post('/skills/import', { skill_md: skillMd, category });
+    return response.data;
+  }
+
   async removeSkill(agentId: string, skillId: string): Promise<any> {
     const response = await this.client.delete(`/skills/agent/${agentId}/${skillId}`);
     return response.data;

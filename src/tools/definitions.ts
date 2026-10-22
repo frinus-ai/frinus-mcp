@@ -1486,9 +1486,11 @@ with output_data), or report failures (status='failed' with error_message).`,
   // ---------------------------------------------------------------------------
   {
     name: "skill_list",
-    description: `List available skills in the organization.
+    description: `List the organization's skill bank.
 
-Returns skills with their schemas, categories, and integration requirements.`,
+A skill is a PLAYBOOK: a markdown step-by-step (e.g. "Monitorar Elastic") that
+an agent loads on demand with skill_get. Returns name, slug, description and
+version (content is not included — use skill_get).`,
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -1513,6 +1515,68 @@ Returns the agent's assigned skills with permission levels.`,
         },
       },
       required: ["agent_id"],
+    },
+  },
+  {
+    name: "skill_get",
+    description: `Load a skill playbook (the full step-by-step) by slug or UUID.
+
+Call this BEFORE acting whenever the task matches one of your skills (listed in
+the bootstrap under "Skills"), then follow the steps. If the skill lists vault
+credentials, use credential_exec/credential_get with those refs.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        skill: { type: "string", description: "Skill slug (e.g. 'monitorar-elastic') or UUID" },
+      },
+      required: ["skill"],
+    },
+  },
+  {
+    name: "skill_create",
+    description: `Create a playbook skill in the organization's skill bank (owner/trainer).
+
+Use when a procedure was validated and should become reusable by agents.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Display name (e.g. 'Monitorar Elastic')" },
+        slug: { type: "string", description: "Lowercase letters, digits and hyphens, max 64 (e.g. 'monitorar-elastic')" },
+        description: { type: "string", description: "When/why to use it (max 1024). This is what makes an agent pick the skill." },
+        content: { type: "string", description: "Markdown step-by-step (max 50000 chars). Never put secrets here — reference vault credentials instead." },
+        category: { type: "string", description: "Optional category (e.g. 'observability')" },
+        credential_refs: { type: "array", items: { type: "string" }, description: "Vault credential refs the playbook uses (e.g. ['elastic_prod'])" },
+      },
+      required: ["name", "slug", "description"],
+    },
+  },
+  {
+    name: "skill_update",
+    description: `Update a skill (owner/trainer). Changing content bumps the version.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        skill_id: { type: "string", description: "UUID of the skill" },
+        name: { type: "string" },
+        description: { type: "string" },
+        content: { type: "string" },
+        category: { type: "string" },
+        credential_refs: { type: "array", items: { type: "string" } },
+        is_active: { type: "boolean" },
+      },
+      required: ["skill_id"],
+    },
+  },
+  {
+    name: "skill_import",
+    description: `Import a Claude Code SKILL.md (frontmatter name + description, markdown body) into the skill bank (owner/trainer).`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        skill_md: { type: "string", description: "Full SKILL.md text" },
+        category: { type: "string" },
+      },
+      required: ["skill_md"],
     },
   },
   {
