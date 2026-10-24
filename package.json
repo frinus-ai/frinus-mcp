@@ -1,6 +1,6 @@
 {
   "name": "frinus-mcp",
-  "version": "3.6.3",
+  "version": "3.6.4",
   "description": "Frinus - MCP Server for Cognitive Memory (φρήν + νοῦς). Long-term memory, sessions, agents and knowledge for Claude and any MCP client.",
   "type": "module",
   "main": "dist/index.js",
@@ -17,6 +17,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "node --import tsx --test tests/*.test.ts",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "pack:mcpb": "./scripts/pack-mcpb.sh",

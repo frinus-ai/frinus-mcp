@@ -398,14 +398,17 @@ const handlers: Record<string, HandlerFn> = {
     const meta = (args.metadata as Record<string, unknown> | undefined) || {};
     const universeId = (args.universe_id as string) || (meta.universe_id as string) || undefined;
 
-    // Human-in-the-loop classification: the backend classifies the memory by
-    // content at write time and returns a SUGGESTION (classification_status
-    // "proposed"). Nothing is moved automatically — the user reviews via
-    // memory_classification_pending and approves with
-    // memory_classification_approve. The MCP layer no longer injects an
-    // implicit "universe" scope nor surfaces "available universes"; scope,
-    // universe_id and context_id are forwarded ONLY when the caller sets them
-    // (explicit overrides → classification_status "manual").
+    // Write-time classification: the backend classifies the memory by content
+    // and, when the tenant's `auto_classify` setting is enabled and the
+    // proposal confidence meets the tenant threshold, anchors it automatically
+    // (classification_status "proposed"/"universe_only" become real FK columns);
+    // below the threshold it stays a pending SUGGESTION the user reviews via
+    // memory_classification_pending / memory_classification_approve. See
+    // memory/src/api/routers/memories.py (classification/settings). The MCP
+    // layer no longer injects an implicit "universe" scope nor surfaces
+    // "available universes"; scope, universe_id and context_id are forwarded
+    // ONLY when the caller sets them (explicit overrides → status "manual",
+    // which anchors there directly and skips classification).
     try {
       const result = await memoryClient.storeMemory({
         agent_id: args.agent_id as string,
@@ -959,7 +962,19 @@ const handlers: Record<string, HandlerFn> = {
     }
     formatted += `\n`;
     results.memories.forEach((mem: any, i: number) => {
-      formatted += `${i + 1}. [${mem.memory_type}] (id: ${mem.id}) (score: ${mem.weighted_score?.toFixed(2) || mem.similarity?.toFixed(2)})\n`;
+      // Q-MEM-02: /memories/search-with-attention returns `attention_score`
+      // (re-ranked) + `base_similarity` (see memory/src/api/schemas.py
+      // MemoryWithAttentionScore). The legacy field `weighted_score` and the
+      // plain /memories/search field `similarity` are kept as fallbacks so the
+      // same renderer works across endpoints. `?? ` (not `||`) so a real 0 score
+      // is not swallowed.
+      const score =
+        mem.attention_score ??
+        mem.weighted_score ??
+        mem.base_similarity ??
+        mem.similarity;
+      const scoreTxt = typeof score === "number" ? score.toFixed(2) : "n/a";
+      formatted += `${i + 1}. [${mem.memory_type}] (id: ${mem.id}) (score: ${scoreTxt})\n`;
       formatted += `   ${mem.content?.slice(0, 200)}...\n\n`;
     });
     return { content: [{ type: "text", text: formatted }] };
@@ -1120,11 +1135,26 @@ const handlers: Record<string, HandlerFn> = {
       return { content: [{ type: "text", text: "No conflicts detected." }] };
     }
 
-    let formatted = `Detected ${result.conflicts_found || conflicts.length} potential conflicts:\n\n`;
+    let formatted = `Detected ${result.conflicts_found ?? conflicts.length} potential conflicts:\n\n`;
     conflicts.forEach((conflict: any, i: number) => {
-      formatted += `${i + 1}. Similarity: ${conflict.similarity?.toFixed(2)}\n`;
-      formatted += `   Memory 1: ${conflict.memory1?.content?.slice(0, 100)}...\n`;
-      formatted += `   Memory 2: ${conflict.memory2?.content?.slice(0, 100)}...\n\n`;
+      // Q-MEM-03: the backend emits `memory_1` / `memory_2` (ConflictPair in
+      // memory/src/api/schemas.py), each with id/content, plus `conflict_type`
+      // and `suggested_action`. The old code read `memory1`/`memory2` (no
+      // underscore) so content printed as "undefined" and the type/action were
+      // dropped. Keep the snake-less variants as a defensive fallback.
+      const m1 = conflict.memory_1 ?? conflict.memory1;
+      const m2 = conflict.memory_2 ?? conflict.memory2;
+      const simTxt =
+        typeof conflict.similarity === "number"
+          ? conflict.similarity.toFixed(2)
+          : "n/a";
+      formatted += `${i + 1}. Similarity: ${simTxt}`;
+      if (conflict.conflict_type) formatted += ` · type: ${conflict.conflict_type}`;
+      formatted += `\n`;
+      formatted += `   Memory 1 (${m1?.id ?? "?"}): ${m1?.content?.slice(0, 100) ?? "(no content)"}...\n`;
+      formatted += `   Memory 2 (${m2?.id ?? "?"}): ${m2?.content?.slice(0, 100) ?? "(no content)"}...\n`;
+      if (conflict.suggested_action) formatted += `   Suggested action: ${conflict.suggested_action}\n`;
+      formatted += `\n`;
     });
     return { content: [{ type: "text", text: formatted }] };
   },
@@ -1153,12 +1183,20 @@ const handlers: Record<string, HandlerFn> = {
       return { content: [{ type: "text", text: "No redundant memories detected." }] };
     }
 
-    let formatted = `Detected ${result.groups_found || groups.length} redundant memory groups (${result.total_redundant || 0} total memories):\n\n`;
+    let formatted = `Detected ${result.groups_found ?? groups.length} redundant memory groups (${result.total_redundant ?? 0} redundant memories):\n\n`;
     groups.forEach((group: any, i: number) => {
-      formatted += `${i + 1}. Group similarity: ${group.avg_similarity?.toFixed(2) || 'N/A'}\n`;
-      formatted += `   Memories: ${group.memory_ids?.length || 0}\n`;
-      if (group.memories && group.memories.length > 0) {
-        formatted += `   Preview: ${group.memories[0]?.content?.slice(0, 100)}...\n`;
+      // Q-MEM-04: the backend emits `keep` (the memory to retain), `redundant`
+      // (the duplicates) and `total_in_group` (RedundantGroup in
+      // memory/src/api/schemas.py). The old code read `avg_similarity`,
+      // `memory_ids` and `memories`, none of which exist, so every group showed
+      // "N/A" and 0 memories.
+      const redundantCount = Array.isArray(group.redundant) ? group.redundant.length : 0;
+      const total =
+        group.total_in_group ?? (redundantCount + (group.keep ? 1 : 0));
+      formatted += `${i + 1}. Memories in group: ${total} (keep 1, redundant ${redundantCount})\n`;
+      const keepPreview = group.keep?.content?.slice(0, 100);
+      if (keepPreview) {
+        formatted += `   Keep (${group.keep?.id ?? "?"}): ${keepPreview}...\n`;
       }
       formatted += `\n`;
     });

@@ -17,16 +17,19 @@ export const TOOLS: Tool[] = [
 Use this to record important information, learnings, decisions, or procedures
 that should be remembered for future reference.
 
-The backend classifies the memory by content at write time and returns a
-SUGGESTION (status "proposed"/"universe_only") of which universe/context node it
-belongs to — nothing is moved automatically. Review pending suggestions with
-memory_classification_pending and apply them with memory_classification_approve.
+The backend classifies the memory by content at write time and proposes which
+universe/context node it belongs to. When the tenant has auto-classification
+enabled and the proposal's confidence meets the tenant threshold (the platform
+target is 0.60), the backend ANCHORS the memory on that node automatically — it
+is moved without review. Below the threshold (or with auto-classification off)
+the proposal stays a PENDING suggestion: review it with
+memory_classification_pending and apply with memory_classification_approve.
 
 Passing universe_id or context_id anchors the memory THERE directly (status
 "manual"): auto-classification is skipped entirely, so no suggestion is returned
 and nothing may later move it. The response always reports the destination the
-memory actually landed in — a suggestion, when present, is labelled as pending
-and not applied.
+memory actually landed in — a suggestion that is still pending is labelled as
+such and has NOT been applied.
 
 Memory types:
 - episodic: Specific experiences and events (what happened)
@@ -687,8 +690,15 @@ Useful for maintaining consistency in the knowledge base.`,
     inputSchema: {
       type: "object" as const,
       properties: {
-        similarity_threshold: { type: "number", description: "Similarity threshold 0-1 (default: 0.9)" },
-        limit: { type: "integer", description: "Maximum results (default: 50)" },
+        // NOTE: the backend (POST /consolidation/detect-conflicts →
+        // ConflictDetectionRequest) does NOT accept similarity_threshold for
+        // conflict detection — conflict pairs are found by the forgetting
+        // manager's own analysis, and the field is silently ignored (the
+        // request model inherits _IgnoreExtra). It is kept here only for
+        // forward compatibility; it currently has no effect. Redundant
+        // detection (consolidation_detect_redundant) DOES honour it.
+        similarity_threshold: { type: "number", description: "Currently IGNORED by the backend for conflict detection (kept for forward compatibility). Use consolidation_detect_redundant to tune a similarity threshold." },
+        limit: { type: "integer", description: "Maximum memories to analyze (default: 50)" },
       },
       required: [],
     },
