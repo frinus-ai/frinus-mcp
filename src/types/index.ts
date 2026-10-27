@@ -59,12 +59,38 @@ export interface AgentClientInterface {
   }): Promise<any>;
 }
 
+/** A single platform notification served by the Control Plane inbox. */
+export interface NotificationItem {
+  id: string;
+  slug: string;
+  title: string;
+  body: string;
+  kind: string;
+  severity: string;
+  cta_label?: string | null;
+  cta_url?: string | null;
+  starts_at?: string | null;
+  expires_at?: string | null;
+}
+
+/** Response shape of GET /api/v1/notifications/inbox. */
+export interface NotificationInbox {
+  items: NotificationItem[];
+  count: number;
+}
+
 /** Public surface of the CpClient used by handlers. */
 export interface CpClientInterface {
   createUniverse(orgId: string, data: { name: string; slug: string; description?: string }): Promise<any>;
   listUniverses(orgId: string): Promise<any>;
   updateUniverse(orgId: string, universeId: string, data: { name?: string; description?: string }): Promise<any>;
   deleteUniverse(orgId: string, universeId: string): Promise<void>;
+
+  // Platform notifications (short-timeout, tolerant to failure)
+  getNotificationInbox(opts?: {
+    channel?: string; limit?: number; markDelivered?: boolean;
+  }): Promise<NotificationInbox>;
+  ackNotification(id: string): Promise<void>;
 
   // Credential Vault
   storeCredential(integrationRef: string, data: Record<string, unknown>, metadata?: Record<string, unknown>): Promise<any>;

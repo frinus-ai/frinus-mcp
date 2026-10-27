@@ -2,9 +2,17 @@
  * HTTP client for the Frinus Control Plane.
  */
 import axios, { AxiosInstance } from "axios";
-import type { CpClientInterface } from "../types/index.js";
+import type { CpClientInterface, NotificationInbox } from "../types/index.js";
 import { getResolvedTenantOrgId } from "./memory-client.js";
 import { getResolvedClient } from "./client-info.js";
+
+/**
+ * Short timeout (ms) for the platform-notification calls. These are best-effort
+ * side channels that must never slow down bootstrap/heartbeat or hold the agent
+ * hostage on a slow network, so they use a much tighter deadline than the 30s
+ * default of the rest of the Control Plane client.
+ */
+const NOTIFICATION_TIMEOUT_MS = 4000;
 
 export class CpClient implements CpClientInterface {
   private client: AxiosInstance;
@@ -49,6 +57,30 @@ export class CpClient implements CpClientInterface {
 
   async deleteUniverse(orgId: string, universeId: string): Promise<void> {
     await this.client.delete(`/api/v1/orgs/${orgId}/universes/${universeId}`);
+  }
+
+  // =========================================================================
+  // Platform Notifications (short timeout, best-effort)
+  // =========================================================================
+
+  async getNotificationInbox(opts: {
+    channel?: string; limit?: number; markDelivered?: boolean;
+  } = {}): Promise<NotificationInbox> {
+    const response = await this.client.get(`/api/v1/notifications/inbox`, {
+      params: {
+        channel: opts.channel ?? "mcp",
+        limit: opts.limit ?? 3,
+        mark_delivered: opts.markDelivered ?? false,
+      },
+      timeout: NOTIFICATION_TIMEOUT_MS,
+    });
+    return response.data;
+  }
+
+  async ackNotification(id: string): Promise<void> {
+    await this.client.post(`/api/v1/notifications/${id}/ack`, undefined, {
+      timeout: NOTIFICATION_TIMEOUT_MS,
+    });
   }
 
   // =========================================================================

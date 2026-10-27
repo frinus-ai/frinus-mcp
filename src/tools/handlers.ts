@@ -8,6 +8,7 @@ import axios from "axios";
 import { spawn } from "node:child_process";
 import type { ToolResult, ToolArgs, ToolHandlerDeps } from "../types/index.js";
 import { getResolvedTenantOrgId } from "../client/memory-client.js";
+import { fetchNotificationsBlock } from "../notifications.js";
 
 // ---------------------------------------------------------------------------
 // Credential delivery — server-side broker, never by value
@@ -1056,7 +1057,7 @@ const handlers: Record<string, HandlerFn> = {
   // Maintenance
   // ==========================================================================
 
-  async heartbeat_tick(args, { memoryClient }) {
+  async heartbeat_tick(args, { memoryClient, cpClient }) {
     const result = await memoryClient.heartbeatTick({
       agent_id: args.agent_id as string,
       context_id: args.context_id as string,
@@ -1087,6 +1088,14 @@ const handlers: Record<string, HandlerFn> = {
         formatted += `  ${action}: at interaction ${count}\n`;
       }
     }
+
+    // Piggyback the notifications check on the heartbeat. fetchNotificationsBlock
+    // self-throttles (at most once per FRINUS_NOTIFICATIONS_INTERVAL_MIN) and
+    // dedupes against what this session already showed, so this is cheap and
+    // never shows the same item twice.
+    const notif = await fetchNotificationsBlock(cpClient, { force: false });
+    if (notif) formatted += `\n${notif}`;
+
     return { content: [{ type: "text", text: formatted }] };
   },
 
@@ -1341,7 +1350,14 @@ const handlers: Record<string, HandlerFn> = {
     };
   },
 
-  async agent_bootstrap(args, { agentClient }) {
+  async agent_bootstrap(args, { agentClient, cpClient }) {
+    // Kick off the notifications fetch concurrently with the bootstrap call so
+    // it adds no latency on the critical path. fetchNotificationsBlock never
+    // throws and self-limits to a 4s timeout, so bootstrap can neither fail nor
+    // stall because of it; the extra .catch is defence in depth.
+    const notifPromise = fetchNotificationsBlock(cpClient, { force: true }).catch(
+      () => "",
+    );
     try {
       const result = await agentClient.bootstrapAgent(args.agent_id as string);
 
@@ -1408,6 +1424,9 @@ const handlers: Record<string, HandlerFn> = {
       if (delegateDigest && delegateDigest.count > 0 && delegateDigest.summary) {
         formatted += `\n### Delegate Targets\n${delegateDigest.summary}\n`;
       }
+
+      const notif = await notifPromise;
+      if (notif) formatted += `\n\n${notif}`;
 
       return { content: [{ type: "text", text: formatted }] };
     } catch (error: any) {
@@ -2479,6 +2498,78 @@ const handlers: Record<string, HandlerFn> = {
             text: error?.response?.data?.detail || `You do not own a credential named '${ref}'`,
           }],
           isError: true,
+        };
+      }
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+  },
+
+  // ==========================================================================
+  // Platform Notifications
+  // ==========================================================================
+
+  async notifications_list(_args, { cpClient }) {
+    try {
+      // mark_delivered=false: this is a read-only peek that must NOT consume a
+      // delivery against max_deliveries. Use a higher limit than the automatic
+      // channels so the user can see everything still pending.
+      const inbox = await cpClient.getNotificationInbox({
+        channel: "mcp",
+        limit: 10,
+        markDelivered: false,
+      });
+      const items = inbox?.items || [];
+      if (items.length === 0) {
+        return { content: [{ type: "text", text: "No pending Frinus notifications." }] };
+      }
+
+      let text = `${items.length} pending Frinus notification${items.length === 1 ? "" : "s"}:\n\n`;
+      items.forEach((it: any) => {
+        const sev = it.severity ? `[${it.severity}] ` : "";
+        text += `- ${sev}${it.title} (id: ${it.id})\n`;
+        let body = (it.body || "").trim();
+        if (body.length > 300) body = body.slice(0, 300).trimEnd() + "…";
+        if (body) text += `  ${body.replace(/\n+/g, " ")}\n`;
+        if (it.cta_url) text += `  → ${it.cta_label ? `${it.cta_label}: ` : ""}${it.cta_url}\n`;
+      });
+      text += `\nCall notification_ack(id) once the user has seen one so it stops appearing.`;
+      return { content: [{ type: "text", text }] };
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        // CP without the notifications endpoint yet — treat as empty, not error.
+        return { content: [{ type: "text", text: "No pending Frinus notifications." }] };
+      }
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+  },
+
+  async notification_ack(args, { cpClient }) {
+    const id = (args.id as string) || "";
+    if (!id) {
+      return {
+        content: [{ type: "text", text: "notification_ack requires an 'id'." }],
+        isError: true,
+      };
+    }
+    try {
+      await cpClient.ackNotification(id);
+      return {
+        content: [{
+          type: "text",
+          text: `Notification ${id} acknowledged. It will no longer appear in the inbox.`,
+        }],
+      };
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        return {
+          content: [{
+            type: "text",
+            text: `Notification ${id} not found (already acknowledged, expired, or not for you).`,
+          }],
         };
       }
       const apiErr = handleApiError(error);

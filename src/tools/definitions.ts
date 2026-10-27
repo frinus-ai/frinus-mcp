@@ -1864,4 +1864,43 @@ granted it and when. No secret data.`,
       required: ["ref"],
     },
   },
+  // ==========================================================================
+  // Platform Notifications (2)
+  // ==========================================================================
+  {
+    name: "notifications_list",
+    description: `List pending Frinus platform notifications for the current user.
+
+These are platform-authored announcements: new features, maintenance windows,
+tips and alerts. This is a READ-ONLY peek — it does not mark anything as
+delivered or acknowledged, so items stay in the inbox until the user sees them.
+
+Each item includes an \`id\` you can pass to notification_ack once the user has
+read it. Use this when the user asks "what's new" or to re-check news that was
+surfaced earlier in the session.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "notification_ack",
+    description: `Acknowledge a Frinus platform notification by id.
+
+Call this once the user confirms they have seen the news, or asks not to see it
+again. The notification then disappears from the inbox and will not be shown
+again (in this or future sessions). The id comes from the "📣 Novidades do
+Frinus" block or from notifications_list.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: {
+          type: "string",
+          description: "UUID of the notification to acknowledge (required)",
+        },
+      },
+      required: ["id"],
+    },
+  },
 ];
