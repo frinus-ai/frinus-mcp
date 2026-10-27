@@ -9,31 +9,42 @@
  * Design rules:
  *  - NEVER throws. A 404, timeout or any network error yields '' plus a stderr
  *    log. The agent's real work must never be blocked by the news channel.
- *  - In-process state, per MCP process (= per session): which notification ids
- *    were already shown, and when we last hit the inbox. A long-lived process
- *    therefore shows each item at most once and polls at most once per window.
+ *  - In-process session state, per MCP process (= per session): WHEN each item
+ *    was last shown, and when we last hit the inbox. Dedupe is a sliding WINDOW,
+ *    not "forever": a long-lived process re-presents an un-acked item once the
+ *    reprompt window elapses, so an ignored notice resurfaces on a later
+ *    heartbeat instead of vanishing for the whole session. The server still caps
+ *    total deliveries (counted at most once/day per user), so this cannot spam.
  *  - Env toggles: FRINUS_NOTIFICATIONS=off disables everything;
- *    FRINUS_NOTIFICATIONS_INTERVAL_MIN overrides the throttle window (default 60).
+ *    FRINUS_NOTIFICATIONS_INTERVAL_MIN overrides the FETCH throttle (default 60);
+ *    FRINUS_NOTIFICATIONS_REPROMPT_MIN overrides how long an already-shown item
+ *    stays suppressed before it may be re-presented (default 1440 = 24h).
  */
 import type { CpClientInterface, NotificationItem } from "./types/index.js";
 
 /** Max characters of a notification body rendered inline. */
 const BODY_LIMIT = 600;
 
-/** Default throttle window for non-forced checks (minutes). */
+/** Default FETCH throttle window for non-forced checks (minutes). */
 const DEFAULT_INTERVAL_MIN = 60;
+
+/** Default reprompt window: how long a shown item stays suppressed (minutes). */
+const DEFAULT_REPROMPT_MIN = 1440; // 24h — aligns with the server's per-day delivery count.
 
 // ---------------------------------------------------------------------------
 // In-process session state
 // ---------------------------------------------------------------------------
-/** Notification ids already shown in this session (dedupe across bootstrap + ticks). */
-const shownIds = new Set<string>();
+/**
+ * Epoch ms each notification id was last SHOWN in this session. Used for a
+ * windowed dedupe: an item is re-presentable once `now - shownAt > reprompt`.
+ */
+const shownAt = new Map<string, number>();
 /** Epoch ms of the last inbox check (forced or throttled). 0 = never. */
 let lastCheckAt = 0;
 
 /** Reset module state. Test-only; not part of the runtime surface. */
 export function __resetNotificationsState(): void {
-  shownIds.clear();
+  shownAt.clear();
   lastCheckAt = 0;
 }
 
@@ -45,6 +56,13 @@ function throttleMs(): number {
   const raw = process.env.FRINUS_NOTIFICATIONS_INTERVAL_MIN;
   const parsed = raw !== undefined ? Number.parseInt(raw, 10) : NaN;
   const minutes = Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_INTERVAL_MIN;
+  return minutes * 60_000;
+}
+
+function repromptMs(): number {
+  const raw = process.env.FRINUS_NOTIFICATIONS_REPROMPT_MIN;
+  const parsed = raw !== undefined ? Number.parseInt(raw, 10) : NaN;
+  const minutes = Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_REPROMPT_MIN;
   return minutes * 60_000;
 }
 
@@ -84,22 +102,47 @@ export async function fetchNotificationsBlock(
     return "";
   }
 
-  const fresh = (inbox?.items || []).filter(
-    (it): it is NotificationItem => !!it && typeof it.id === "string" && !shownIds.has(it.id),
-  );
+  const now2 = Date.now();
+  const window = repromptMs();
+  const fresh = (inbox?.items || []).filter((it): it is NotificationItem => {
+    if (!it || typeof it.id !== "string") return false;
+    const last = shownAt.get(it.id);
+    // Unseen this session, or last shown long enough ago to re-present.
+    return last === undefined || now2 - last >= window;
+  });
   if (fresh.length === 0) return "";
 
-  for (const it of fresh) shownIds.add(it.id);
+  for (const it of fresh) shownAt.set(it.id, now2);
   return renderBlock(fresh);
 }
 
-/** Render the markdown block the agent relays to the user. */
-function renderBlock(items: NotificationItem[]): string {
+/** Human label for a notification scope, used in the rendered header. */
+function scopeLabel(scope?: string): string {
+  if (scope === "organization") return "Organização";
+  if (scope === "system") return "Sistema";
+  return "Sistema"; // default/unknown: treat as a platform notice.
+}
+
+/**
+ * Render the markdown block the agent relays to the user. Exported so another
+ * frente can insert it at the TOP of the boot contract (the preferred place —
+ * appended at the end, a ~15k-token bootstrap buries it and the model skips it).
+ *
+ * The block is self-contained: it tells the agent to relay briefly, to ack on
+ * the user's confirmation, and — for `critical` items — to relay IMMEDIATELY.
+ */
+export function renderBlock(items: NotificationItem[]): string {
+  const hasCritical = items.some((it) => it.severity === "critical");
   let out = `## 📣 Novidades do Frinus\n\n`;
 
   for (const it of items) {
-    const sev = it.severity ? ` _(${it.severity})_` : "";
-    out += `### ${it.title}${sev}\n`;
+    const label = scopeLabel(it.scope);
+    const sev = it.severity ? ` · _${it.severity}_` : "";
+    out += `### [${label}] ${it.title}${sev}\n`;
+
+    if (it.severity === "critical") {
+      out += `> ⚠️ CRÍTICO — repasse ao usuário IMEDIATAMENTE, antes de seguir com a tarefa.\n`;
+    }
 
     let body = (it.body || "").trim();
     if (body.length > BODY_LIMIT) {
@@ -117,10 +160,18 @@ function renderBlock(items: NotificationItem[]): string {
   }
 
   out += `---\n`;
+  if (hasCritical) {
+    out +=
+      `Há um aviso CRÍTICO acima: repasse-o ao usuário IMEDIATAMENTE, no início ` +
+      `da sua próxima resposta. `;
+  } else {
+    out += `Avise o usuário destas novidades de forma breve (1–3 linhas cada) no ` +
+      `início da sua próxima resposta, sem interromper a tarefa. `;
+  }
   out +=
-    `Avise o usuário destas novidades de forma breve (1–3 linhas cada) no ` +
-    `início da sua próxima resposta, sem interromper a tarefa. Quando ele ` +
-    `confirmar ciência ou pedir para não ver mais, chame notification_ack(id).\n`;
+    `Avisos marcados [Sistema] vêm do Frinus; [Organização] vêm da própria ` +
+    `organização do usuário. Quando ele confirmar ciência ou pedir para não ` +
+    `ver mais, chame notification_ack(id).\n`;
 
   return out;
 }

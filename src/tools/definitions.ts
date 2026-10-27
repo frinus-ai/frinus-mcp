@@ -1865,15 +1865,16 @@ granted it and when. No secret data.`,
     },
   },
   // ==========================================================================
-  // Platform Notifications (2)
+  // Platform Notifications (3)
   // ==========================================================================
   {
     name: "notifications_list",
-    description: `List pending Frinus platform notifications for the current user.
+    description: `List pending Frinus notifications for the current user.
 
-These are platform-authored announcements: new features, maintenance windows,
-tips and alerts. This is a READ-ONLY peek — it does not mark anything as
-delivered or acknowledged, so items stay in the inbox until the user sees them.
+Two scopes appear here: (Sistema) = platform-authored (new features, maintenance,
+tips, alerts), and (Organização) = authored by an owner of the user's own org.
+This is a READ-ONLY peek — it does not mark anything as delivered or acknowledged,
+so items stay in the inbox until the user sees them.
 
 Each item includes an \`id\` you can pass to notification_ack once the user has
 read it. Use this when the user asks "what's new" or to re-check news that was
@@ -1901,6 +1902,69 @@ Frinus" block or from notifications_list.`,
         },
       },
       required: ["id"],
+    },
+  },
+  {
+    name: "notification_create",
+    description: `Publish an ORGANIZATION notification to the members of your org (OWNER only).
+
+Use this when an org owner wants to broadcast something to their team through the
+Frinus channel: a process change, a reminder, a heads-up. The notice is delivered
+on each member's next agent_bootstrap / heartbeat and leaves their inbox when they
+acknowledge it (or after max_deliveries days of being shown-and-ignored).
+
+Scope is forced server-side: the notice is bound to YOUR org and cannot target
+other orgs (that is a platform_admin "system" notice, created elsewhere). Optional
+targeting narrows WITHIN your org by role and/or specific users. Requires owner
+role — a 403 means the account is not an owner. Use severity "critical" only for
+things the member must see immediately (it is relayed before other work).`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        title: { type: "string", description: "Short headline (required, 1–200 chars)" },
+        body: {
+          type: "string",
+          description: "Message body, markdown allowed (optional, up to 2000 chars)",
+        },
+        kind: {
+          type: "string",
+          enum: ["feature", "announcement", "maintenance", "tip", "alert"],
+          description: "Category (default 'announcement')",
+        },
+        severity: {
+          type: "string",
+          enum: ["info", "success", "warning", "critical"],
+          description: "Visual/priority level (default 'info'; 'critical' is relayed immediately)",
+        },
+        target_roles: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional: only members with one of these roles (e.g. ['trainer']). Empty = all members.",
+        },
+        target_user_keys: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional: only these specific users (user id/sub or email). Empty = all members.",
+        },
+        cta_label: { type: "string", description: "Optional call-to-action label" },
+        cta_url: {
+          type: "string",
+          description: "Optional call-to-action URL (must be https://)",
+        },
+        starts_at: {
+          type: "string",
+          description: "Optional ISO-8601 start time (default: now)",
+        },
+        expires_at: {
+          type: "string",
+          description: "Optional ISO-8601 expiry time (default: never)",
+        },
+        max_deliveries: {
+          type: "number",
+          description: "How many days an unseen notice is shown before it drops off (default 3, 1–100)",
+        },
+      },
+      required: ["title"],
     },
   },
 ];
