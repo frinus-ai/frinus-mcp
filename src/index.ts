@@ -35,6 +35,21 @@ import { getResolvedClient, setResolvedClient } from "./client/client-info.js";
 import { InteractionCapture } from "./capture/interaction-capture.js";
 import { TOOLS } from "./tools/definitions.js";
 import { dispatchTool } from "./tools/handlers.js";
+import { getSessionId, noteToolCall, reorientBanner, setSessionId } from "./tools/boot-state.js";
+import { MCP_VERSION } from "./version.js";
+
+// Irreducible boot rules injected into the client's system prompt via the MCP
+// `initialize` handshake (Claude Code places server `instructions` there). These
+// are the rules that MUST survive even if a single tool response is truncated or
+// skimmed — the structural backstop behind the Boot Contract block.
+const SERVER_INSTRUCTIONS = [
+  "Frinus MCP — regras de boot que nunca podem cair:",
+  "1. No início da sessão, chame agent_bootstrap(agent_id=...) e adote o \"Contrato de Boot\" no TOPO da resposta: identidade, ORGANIZAÇÃO (grave memórias só nela), usuário, session_id e a cadência de reorient. O system prompt longo vem depois do contrato.",
+  "2. Quando QUALQUER resposta de tool trouxer \"⚠️ REORIENT DEVIDO\", chame agent_reorient(agent_id=...) antes de continuar. O MCP conta as tool calls por você.",
+  "3. Confirme a organização do Contrato de Boot ANTES da primeira escrita de memória — nunca grave na org errada.",
+  "4. A sessão é gerenciada pelo MCP (iniciada no agent_bootstrap, encerrada no fim do processo). Não precisa fechá-la à mão.",
+  "Se o MCP/bootstrap estiver indisponível, avise \"MCP Frinus offline — capacidades reduzidas.\" e opere com cautela.",
+].join("\n");
 
 // Defaults point at the Frinus SaaS so `npx -y frinus-mcp` works with only an
 // API key. Local development overrides these via env (MEMORY_SERVICE_URL, etc.).
@@ -120,14 +135,60 @@ async function main() {
   const server = new Server(
     {
       name: "frinus",
-      version: "3.8.0",
+      version: MCP_VERSION,
     },
     {
       capabilities: {
         tools: {},
       },
+      instructions: SERVER_INSTRUCTIONS,
     }
   );
+
+  // --- Session lifecycle: close on process exit ---------------------------
+  // The session is OPENED by agent_bootstrap (the MCP owns it, not the model).
+  // Here we guarantee it is CLOSED when the process goes away: Claude Code
+  // closing stdin, a SIGTERM/SIGINT, or the event loop draining. We run
+  // session_summary then session_end under a short timeout so a slow/unreachable
+  // Memory Engine can never hang shutdown. Idempotent via the `closing` guard.
+  let closing = false;
+  const SHUTDOWN_TIMEOUT_MS = 3000;
+  const closeSession = async (reason: string): Promise<void> => {
+    if (closing) return;
+    closing = true;
+    const sid = getSessionId();
+    if (!sid) return;
+    console.error(`[Session] Closing ${sid} (${reason})`);
+    const work = (async () => {
+      try {
+        await memoryClient.getSessionSummary(sid);
+      } catch (err: any) {
+        console.error(`[Session] summary failed: ${err?.message || err}`);
+      }
+      try {
+        await memoryClient.endSession(sid);
+      } catch (err: any) {
+        console.error(`[Session] end failed: ${err?.message || err}`);
+      }
+    })();
+    await Promise.race([
+      work,
+      new Promise<void>((resolve) => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),
+    ]);
+    setSessionId(null);
+  };
+  const shutdownAndExit = (reason: string) => {
+    void closeSession(reason).finally(() => process.exit(0));
+  };
+  process.once("SIGTERM", () => shutdownAndExit("SIGTERM"));
+  process.once("SIGINT", () => shutdownAndExit("SIGINT"));
+  // stdin close = the MCP client (Claude Code) disconnected.
+  process.stdin.on("close", () => shutdownAndExit("stdin-close"));
+  // Last-resort backstop when the loop drains without a signal. Does not force
+  // exit (lets the natural exit proceed after a best-effort close).
+  process.once("beforeExit", () => {
+    void closeSession("beforeExit");
+  });
 
   // List tools handler (all tools always visible; backend enforces auth)
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -154,6 +215,25 @@ async function main() {
       capture.captureToolCall(name, args as Record<string, unknown>, toolResult);
     } catch (err: any) {
       console.error('[MCP] Capture failed:', err.message);
+    }
+
+    // Deterministic reorient cadence (see tools/boot-state.ts): count this call,
+    // then, if the agent is overdue, append the REORIENT DUE banner to the result
+    // so the model cannot miss it. Repeats on every call until agent_reorient
+    // resets the counter. Never throws into the response path.
+    try {
+      noteToolCall(name);
+      const banner = reorientBanner();
+      if (banner) {
+        const last = toolResult.content?.[toolResult.content.length - 1];
+        if (last && last.type === "text") {
+          last.text += banner;
+        } else {
+          toolResult.content = [...(toolResult.content || []), { type: "text", text: banner.trimStart() }];
+        }
+      }
+    } catch (err: any) {
+      console.error('[MCP] Reorient cadence check failed:', err?.message || err);
     }
 
     return toolResult;
