@@ -869,7 +869,11 @@ Memories created by the agent are NOT deleted.`,
     name: "agent_bootstrap",
     description: `Bootstrap completo do agente — chame no início da sessão para carregar identidade, system prompt e contexto runtime. O agente thin-client chama isto como regra única de boot.
 
-Retorna identity, system_prompt, runtime (working_memory, recent_memories, skills, delegate_digest) e persona_version em uma única chamada.
+A resposta começa por um "Contrato de Boot" no TOPO com o que não pode se perder: identidade (id), organização (grave memórias só nela), usuário, versão do MCP, session_id, persona_version e a cadência de reorient. O system prompt longo vem depois.
+
+Efeitos colaterais: inicia a sessão de memória (session_id devolvido no contrato; o MCP a encerra no fim do processo) e arma a cadência de reorient — a partir daqui o MCP conta as tool calls e anexa um aviso "REORIENT DEVIDO" quando vencer.
+
+Retorna identity, system_prompt, runtime (working_memory, recent_memories, skills, delegate_digest), config (reorient_every_n, reorient_on_context_pct, max_memories) e persona_version.
 
 O roster de especialistas NÃO vem no bootstrap — apenas um resumo (quantos e em quais universos). Use \`agent_list\` no momento da delegação para obter nomes e IDs.`,
     inputSchema: {

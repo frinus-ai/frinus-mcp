@@ -9,6 +9,8 @@ import { spawn } from "node:child_process";
 import type { ToolResult, ToolArgs, ToolHandlerDeps } from "../types/index.js";
 import { getResolvedTenantOrgId } from "../client/memory-client.js";
 import { fetchNotificationsBlock } from "../notifications.js";
+import { MCP_VERSION } from "../version.js";
+import { getSessionId, markBooted, resetReorientCounter } from "./boot-state.js";
 
 // ---------------------------------------------------------------------------
 // Credential delivery — server-side broker, never by value
@@ -1350,7 +1352,7 @@ const handlers: Record<string, HandlerFn> = {
     };
   },
 
-  async agent_bootstrap(args, { agentClient, cpClient }) {
+  async agent_bootstrap(args, { agentClient, cpClient, memoryClient, capture, resolvedUserEmail, resolvedUserId }) {
     // Kick off the notifications fetch concurrently with the bootstrap call so
     // it adds no latency on the critical path. fetchNotificationsBlock never
     // throws and self-limits to a 4s timeout, so bootstrap can neither fail nor
@@ -1363,16 +1365,66 @@ const handlers: Record<string, HandlerFn> = {
 
       const identity = result.identity || {};
       const runtime = result.runtime || {};
+      const bootConfig = result.config || {};
+
+      const agentIdStr = String(identity.id || args.agent_id || "");
+
+      // --- Session lifecycle: the MCP owns it ------------------------------
+      // The boot protocol must not depend on the model remembering to call
+      // session_start / session_end. We start the formal session HERE (once per
+      // process) and record it in the boot state; the process-exit hooks in
+      // index.ts close it (session_summary + session_end). Best-effort: a
+      // Memory Engine hiccup must never make bootstrap fail.
+      let activeSessionId = getSessionId();
+      if (!activeSessionId) {
+        try {
+          const s = await memoryClient.startSession({ agent_id: agentIdStr });
+          activeSessionId = s?.session_id || null;
+          if (activeSessionId) capture.sessionId = activeSessionId;
+        } catch (err: any) {
+          console.error("[MCP] bootstrap session_start failed:", err?.message || err);
+        }
+      }
+
+      // Arm the deterministic reorient cadence from the authoritative config.
+      const reorientEveryN = Number(bootConfig.reorient_every_n) || 10;
+      const reorientPct = Number(bootConfig.reorient_on_context_pct) || 70;
+      markBooted({
+        agentId: agentIdStr,
+        sessionId: activeSessionId,
+        config: { reorientEveryN, reorientOnContextPct: reorientPct },
+      });
+
+      // --- Boot Contract (TOP: highest-attention, never-truncated-away) -----
+      // Everything the agent cannot afford to lose goes here, ABOVE the long
+      // system prompt (which the model tends to skim at the tail). Identity,
+      // the org it may write to, the user, the session, and the reorient
+      // cadence. The long persona/protocol text follows.
+      const orgId = identity.org_id || getResolvedTenantOrgId() || "unknown";
+      const orgName = identity.org_name ? `${identity.org_name} ` : "";
+      const userEmail = resolvedUserEmail || "desconhecido";
+      const userId = resolvedUserId ? ` \`${resolvedUserId}\`` : "";
+      const roleTxt = identity.role || identity.specialization;
 
       let formatted = `# Agent Bootstrap\n\n`;
-
-      formatted += `## Identity\n`;
-      if (identity.id) formatted += `ID: ${identity.id}\n`;
-      if (identity.name) formatted += `Name: ${identity.name}\n`;
-      if (identity.role || identity.specialization) formatted += `Role: ${identity.role || identity.specialization}\n`;
-      if (identity.universe_id) formatted += `Universe: ${identity.universe_id}\n`;
-      if (identity.team_id) formatted += `Team: ${identity.team_id}\n`;
-      if (result.persona_version !== undefined) formatted += `Persona Version: ${result.persona_version}\n`;
+      formatted += `## ⚙️ Contrato de Boot (CRÍTICO — leia e adote ANTES de tudo)\n`;
+      // NOTE(notifications frente): reserved insertion point for the alerts /
+      // notifications block at the TOP of the contract. The other frente owns
+      // whether and where to render it; today it is still appended at the end
+      // of this response (see notifPromise below). Do not move it from here
+      // without coordinating.
+      formatted += `<!-- ALERTS_SLOT -->\n`;
+      formatted += `- Agente: ${identity.name || "?"} \`${agentIdStr}\`\n`;
+      if (roleTxt) formatted += `- Papel: ${roleTxt}\n`;
+      formatted += `- Organização: ${orgName}\`${orgId}\` — grave memórias SOMENTE nesta org (confira antes da 1ª escrita)\n`;
+      formatted += `- Usuário: ${userEmail}${userId}\n`;
+      formatted += `- MCP: frinus v${MCP_VERSION}`;
+      if (activeSessionId) formatted += ` · Sessão: ${activeSessionId}`;
+      if (result.persona_version !== undefined) formatted += ` · Persona: ${result.persona_version}`;
+      formatted += `\n`;
+      formatted += `- Reorient: a cada ${reorientEveryN} tool calls OU ~${reorientPct}% de contexto → \`agent_reorient(agent_id="${agentIdStr}")\`. O MCP conta as chamadas e anexa um aviso automático quando vencer — não dependa da sua memória.\n`;
+      if (identity.universe_id) formatted += `- Universe: \`${identity.universe_id}\`\n`;
+      if (identity.team_id) formatted += `- Team: \`${identity.team_id}\`\n`;
       formatted += `\n`;
 
       if (result.system_prompt) {
@@ -1394,7 +1446,14 @@ const handlers: Record<string, HandlerFn> = {
       if (recentMemories.length > 0) {
         formatted += `\n### Recent Memories (${recentMemories.length})\n`;
         recentMemories.forEach((mem: any, i: number) => {
-          formatted += `${i + 1}. [${mem.memory_type || "memory"}] ${mem.content?.slice(0, 150)}\n`;
+          // The server sends `type` (not `memory_type`); accept both so the
+          // label is real instead of a constant "[memory]". Surface the id so
+          // the agent can reinforce/weaken/get it, and the importance so it can
+          // weight it. Content cut raised from 150 to 400 chars.
+          const t = mem.type || mem.memory_type || "memory";
+          const idTxt = mem.id ? ` (id: ${mem.id})` : "";
+          const imp = typeof mem.importance === "number" ? ` (importance: ${mem.importance.toFixed(2)})` : "";
+          formatted += `${i + 1}. [${t}]${idTxt}${imp} ${mem.content?.slice(0, 400)}\n`;
         });
       }
 
@@ -1409,8 +1468,14 @@ const handlers: Record<string, HandlerFn> = {
         skills.forEach((s: any) => {
           const name = s.skill_name || s.name || s.slug || s;
           const slug = s.slug ? ` \`${s.slug}\`` : "";
+          // version/permission come from the server (skill_version / permission)
+          // and were previously discarded. They tell the agent which revision it
+          // holds and whether it may edit the playbook.
+          const ver = s.version || s.skill_version;
+          const verTxt = ver ? ` v${ver}` : "";
+          const perm = s.permission ? ` [${s.permission}]` : "";
           const desc = s.description ? ` — ${s.description}` : "";
-          formatted += `- ${name}${slug}${desc}\n`;
+          formatted += `- ${name}${slug}${verTxt}${perm}${desc}\n`;
         });
         formatted += `</skills_catalog>\n`;
       }
@@ -1442,6 +1507,11 @@ const handlers: Record<string, HandlerFn> = {
         args.agent_id as string,
         args.focus as string | undefined,
       );
+
+      // Deterministic cadence: reorienting clears the "reorient due" counter so
+      // the auto-appended banner stops until the next N tool calls elapse. Done
+      // regardless of what the server returns.
+      resetReorientCounter();
 
       const identity = result.identity || {};
 
