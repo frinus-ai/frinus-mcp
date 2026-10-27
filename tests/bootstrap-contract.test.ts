@@ -175,3 +175,28 @@ test("bootstrap still succeeds when session_start fails", async () => {
   // Cadence still armed even without a session.
   assert.equal(getReorientConfig().reorientEveryN, 7);
 });
+
+test("notifications block is rendered at the TOP, above the Boot Contract", async () => {
+  const { __resetNotificationsState } = await import("../src/notifications.js");
+  __resetNotificationsState();
+  process.env.FRINUS_NOTIFICATIONS = "on";
+  try {
+    const { deps } = makeDeps({});
+    (deps as any).cpClient = {
+      getNotificationInbox: async () => ({
+        items: [{ id: "n-1", title: "Aviso de teste", body: "corpo", severity: "critical", scope: "organization" }],
+        count: 1,
+      }),
+    };
+    const res = await dispatchTool("agent_bootstrap", { agent_id: "11111111-1111-1111-1111-111111111111" }, deps);
+    const text = res.content[0].text;
+    const notifIdx = text.indexOf("Aviso de teste");
+    const contractIdx = text.indexOf("Contrato de Boot");
+    assert.ok(notifIdx >= 0, "notification present");
+    assert.ok(notifIdx < contractIdx, "notification must come BEFORE the contract");
+    assert.equal(text.indexOf("Aviso de teste", notifIdx + 1), -1, "rendered only once (no tail append)");
+  } finally {
+    process.env.FRINUS_NOTIFICATIONS = "off";
+    __resetNotificationsState();
+  }
+});

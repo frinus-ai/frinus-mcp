@@ -1452,14 +1452,15 @@ const handlers: Record<string, HandlerFn> = {
       const userId = resolvedUserId ? ` \`${resolvedUserId}\`` : "";
       const roleTxt = identity.role || identity.specialization;
 
+      // Notifications (system + org) go at the very TOP, above the contract:
+      // a critical notice must be the first thing the agent reads. The fetch
+      // ran concurrently with bootstrapAgent, so awaiting here adds no latency.
+      const notif = await notifPromise;
+
       let formatted = `# Agent Bootstrap\n\n`;
-      formatted += `## ⚙️ Contrato de Boot (CRÍTICO — leia e adote ANTES de tudo)\n`;
-      // NOTE(notifications frente): reserved insertion point for the alerts /
-      // notifications block at the TOP of the contract. The other frente owns
-      // whether and where to render it; today it is still appended at the end
-      // of this response (see notifPromise below). Do not move it from here
-      // without coordinating.
       formatted += `<!-- ALERTS_SLOT -->\n`;
+      if (notif) formatted += `${notif.trimEnd()}\n\n`;
+      formatted += `## ⚙️ Contrato de Boot (CRÍTICO — leia e adote ANTES de tudo)\n`;
       formatted += `- Agente: ${identity.name || "?"} \`${agentIdStr}\`\n`;
       if (roleTxt) formatted += `- Papel: ${roleTxt}\n`;
       formatted += `- Organização: ${orgName}\`${orgId}\` — grave memórias SOMENTE nesta org (confira antes da 1ª escrita)\n`;
@@ -1548,9 +1549,6 @@ const handlers: Record<string, HandlerFn> = {
           if (typeof line === "string" && line) formatted += `- ${line}\n`;
         });
       }
-
-      const notif = await notifPromise;
-      if (notif) formatted += `\n\n${notif}`;
 
       return { content: [{ type: "text", text: formatted }] };
     } catch (error: any) {
