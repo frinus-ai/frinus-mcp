@@ -2,7 +2,11 @@
  * HTTP client for the Frinus Control Plane.
  */
 import axios, { AxiosInstance } from "axios";
-import type { CpClientInterface, NotificationInbox } from "../types/index.js";
+import type {
+  CpClientInterface,
+  NotificationInbox,
+  OwnerNotificationCreate,
+} from "../types/index.js";
 import { getResolvedTenantOrgId } from "./memory-client.js";
 import { getResolvedClient } from "./client-info.js";
 
@@ -81,6 +85,17 @@ export class CpClient implements CpClientInterface {
     await this.client.post(`/api/v1/notifications/${id}/ack`, undefined, {
       timeout: NOTIFICATION_TIMEOUT_MS,
     });
+  }
+
+  /**
+   * Publish an organization-scoped notice (owner only). The Control Plane forces
+   * scope='organization' and target_org_id to the caller's org; the owner only
+   * supplies the message and optional role/user targeting. Uses the normal 30s
+   * timeout: unlike the inbox poll, this is a deliberate user action.
+   */
+  async createOrgNotification(data: OwnerNotificationCreate): Promise<any> {
+    const response = await this.client.post(`/api/v1/notifications/manage`, data);
+    return response.data;
   }
 
   // =========================================================================

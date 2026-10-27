@@ -2657,7 +2657,8 @@ const handlers: Record<string, HandlerFn> = {
       let text = `${items.length} pending Frinus notification${items.length === 1 ? "" : "s"}:\n\n`;
       items.forEach((it: any) => {
         const sev = it.severity ? `[${it.severity}] ` : "";
-        text += `- ${sev}${it.title} (id: ${it.id})\n`;
+        const scope = it.scope === "organization" ? "(Organização) " : "(Sistema) ";
+        text += `- ${scope}${sev}${it.title} (id: ${it.id})\n`;
         let body = (it.body || "").trim();
         if (body.length > 300) body = body.slice(0, 300).trimEnd() + "…";
         if (body) text += `  ${body.replace(/\n+/g, " ")}\n`;
@@ -2699,6 +2700,66 @@ const handlers: Record<string, HandlerFn> = {
             type: "text",
             text: `Notification ${id} not found (already acknowledged, expired, or not for you).`,
           }],
+        };
+      }
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+  },
+
+  async notification_create(args, { cpClient }) {
+    const title = (args.title as string)?.trim() || "";
+    if (!title) {
+      return {
+        content: [{ type: "text", text: "notification_create requires a non-empty 'title'." }],
+        isError: true,
+      };
+    }
+    // Owner scope only: the Control Plane forces scope='organization' and binds
+    // the notice to the caller's own org — the owner cannot target other orgs.
+    const payload: Record<string, unknown> = { title };
+    if (typeof args.body === "string") payload.body = args.body;
+    if (typeof args.kind === "string") payload.kind = args.kind;
+    if (typeof args.severity === "string") payload.severity = args.severity;
+    if (Array.isArray(args.target_roles)) payload.target_roles = args.target_roles;
+    if (Array.isArray(args.target_user_keys)) payload.target_user_keys = args.target_user_keys;
+    if (typeof args.cta_label === "string") payload.cta_label = args.cta_label;
+    if (typeof args.cta_url === "string") payload.cta_url = args.cta_url;
+    if (typeof args.starts_at === "string") payload.starts_at = args.starts_at;
+    if (typeof args.expires_at === "string") payload.expires_at = args.expires_at;
+    if (typeof args.max_deliveries === "number") payload.max_deliveries = args.max_deliveries;
+
+    try {
+      const created = await cpClient.createOrgNotification(payload as any);
+      return {
+        content: [{
+          type: "text",
+          text:
+            `Organization notification created (id: ${created?.id ?? "?"}). It will reach the ` +
+            `members of your org on their next bootstrap/heartbeat, newest-critical first, ` +
+            `and leaves each member's inbox on ack or after max_deliveries days unseen.`,
+        }],
+      };
+    } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 403) {
+        return {
+          content: [{
+            type: "text",
+            text: "Only an org owner can create organization notifications. This account is not an owner of the org.",
+          }],
+          isError: true,
+        };
+      }
+      if (status === 422) {
+        const detail = error?.response?.data?.detail;
+        return {
+          content: [{
+            type: "text",
+            text: `notification_create rejected: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`,
+          }],
+          isError: true,
         };
       }
       const apiErr = handleApiError(error);

@@ -67,10 +67,28 @@ export interface NotificationItem {
   body: string;
   kind: string;
   severity: string;
+  /** "system" (platform-wide) or "organization" (owner of this org). */
+  scope?: string;
   cta_label?: string | null;
   cta_url?: string | null;
   starts_at?: string | null;
   expires_at?: string | null;
+}
+
+/** Payload an org owner sends to publish an organization-scoped notice. */
+export interface OwnerNotificationCreate {
+  title: string;
+  body?: string;
+  kind?: string;
+  severity?: string;
+  target_roles?: string[];
+  target_user_keys?: string[];
+  cta_label?: string | null;
+  cta_url?: string | null;
+  starts_at?: string | null;
+  expires_at?: string | null;
+  max_deliveries?: number;
+  is_active?: boolean;
 }
 
 /** Response shape of GET /api/v1/notifications/inbox. */
@@ -91,6 +109,7 @@ export interface CpClientInterface {
     channel?: string; limit?: number; markDelivered?: boolean;
   }): Promise<NotificationInbox>;
   ackNotification(id: string): Promise<void>;
+  createOrgNotification(data: OwnerNotificationCreate): Promise<any>;
 
   // Credential Vault
   storeCredential(integrationRef: string, data: Record<string, unknown>, metadata?: Record<string, unknown>): Promise<any>;
