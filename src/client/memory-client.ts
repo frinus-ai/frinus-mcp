@@ -120,6 +120,7 @@ export class MemoryClient implements MemoryClientInterface {
     created_by_user_id?: string;
     metadata?: Record<string, unknown>;
     context_id?: string;
+    context_path?: string;
     credential_ref?: string;
     universe_id?: string;
   }) {
@@ -135,9 +136,32 @@ export class MemoryClient implements MemoryClientInterface {
     if (data.user_id) payload.user_id = data.user_id;
     if (data.created_by_user_id) payload.created_by_user_id = data.created_by_user_id;
     if (data.context_id) payload.context_id = data.context_id;
+    // Anchor by NAME (Onda 3): the backend resolves the breadcrumb to a node and
+    // uses it as the anchor target / classifier hint. Precedence is enforced by
+    // the backend: context_id (UUID) > context_path (name) > universe_id.
+    if (data.context_path) payload.context_path = data.context_path;
     if (data.credential_ref) payload.credential_ref = data.credential_ref;
     if (data.universe_id) payload.universe_id = data.universe_id;
     const response = await this.client.post("/memories", payload);
+    return response.data;
+  }
+
+  /**
+   * hierarchy_find — read-only preview of the hierarchy nodes that best match a
+   * free-text query. Reuses the write-time classifier's node index (never
+   * writes). The agent calls it before memory_store (to copy a context_path) and
+   * before a tree-specific search. Universe permission is enforced server-side;
+   * an explicit universe_id the caller cannot read returns 403.
+   */
+  async findHierarchy(data: {
+    query_text: string;
+    universe_id?: string;
+    limit?: number;
+  }) {
+    const payload: Record<string, unknown> = { query_text: data.query_text };
+    if (data.universe_id) payload.universe_id = data.universe_id;
+    if (typeof data.limit === "number") payload.limit = data.limit;
+    const response = await this.client.post("/graph/classify-preview", payload);
     return response.data;
   }
 

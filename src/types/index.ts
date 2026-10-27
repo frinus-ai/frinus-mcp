@@ -122,11 +122,14 @@ export interface MemoryClientInterface {
     agent_id: string; content: string; memory_type?: string; scope?: string;
     importance?: number; user_id?: string;
     created_by_user_id?: string; metadata?: Record<string, unknown>;
-    context_id?: string; credential_ref?: string; universe_id?: string;
+    context_id?: string; context_path?: string; credential_ref?: string; universe_id?: string;
   }): Promise<any>;
   searchMemories(data: {
     query_text: string; agent_id?: string;
     memory_types?: string[]; limit?: number;
+  }): Promise<any>;
+  findHierarchy(data: {
+    query_text: string; universe_id?: string; limit?: number;
   }): Promise<any>;
   getMemory(memoryId: string): Promise<any>;
   getAgentMemories(agentId: string, memoryType?: string, limit?: number): Promise<any>;

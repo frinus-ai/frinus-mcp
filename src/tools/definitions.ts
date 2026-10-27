@@ -17,6 +17,19 @@ export const TOOLS: Tool[] = [
 Use this to record important information, learnings, decisions, or procedures
 that should be remembered for future reference.
 
+ANCHORING (do this first): memory lives in a tree — Universe > Concept > Theme >
+Topic > Point. Before storing, call hierarchy_find("<subject>") and copy the best
+candidate's context_path (BY NAME, e.g. "Plataforma Frinus > Memory Engine") into
+context_path below. The path raises the classifier's confidence and anchors the
+memory on the right node. Never invent a UUID — you get names right, UUIDs wrong.
+
+PRECEDENCE of the placement arguments (highest first):
+  context_id (UUID) > context_path (name) > universe_id > the agent's own
+  universe > auto-classification > the org's "Geral" (floor, never NULL).
+A context_path that is ambiguous or whose segments don't all match never creates
+a node and never fails the write: it anchors to the deepest segment that matched
+and the response carries a non-fatal context_path_warning saying so.
+
 The backend classifies the memory by content at write time and proposes which
 universe/context node it belongs to. When the tenant has auto-classification
 enabled and the proposal's confidence meets the tenant threshold (the platform
@@ -25,11 +38,11 @@ is moved without review. Below the threshold (or with auto-classification off)
 the proposal stays a PENDING suggestion: review it with
 memory_classification_pending and apply with memory_classification_approve.
 
-Passing universe_id or context_id anchors the memory THERE directly (status
-"manual"): auto-classification is skipped entirely, so no suggestion is returned
-and nothing may later move it. The response always reports the destination the
-memory actually landed in — a suggestion that is still pending is labelled as
-such and has NOT been applied.
+Passing context_path, universe_id or context_id anchors the memory accordingly
+(status "manual" for UUIDs): auto-classification is skipped and nothing may later
+move it. The response always reports the destination the memory actually landed
+in — a suggestion that is still pending is labelled as such and has NOT been
+applied.
 
 Memory types:
 - episodic: Specific experiences and events (what happened)
@@ -97,7 +110,11 @@ Scopes:
         },
         context_id: {
           type: "string",
-          description: "Optional UUID of a hierarchy node (universe, concept, theme, topic, or point). When provided, the memory is automatically linked to this node and all its ancestors. Takes precedence over universe_id for hierarchy placement.",
+          description: "Optional UUID of a hierarchy node (universe, concept, theme, topic, or point). When provided, the memory is automatically linked to this node and all its ancestors. Highest-precedence placement argument (above context_path and universe_id).",
+        },
+        context_path: {
+          type: "string",
+          description: "Anchor the memory BY NAME with a breadcrumb like 'Universe > Concept > Theme' (separators /, > or › all work). Call hierarchy_find first and copy the best candidate's context_path here — this is the preferred way to place a memory. The backend resolves names to a node deterministically (never creates nodes). Takes precedence over universe_id, but not over context_id. If a segment is ambiguous or unknown the write still succeeds, anchors to the deepest matched segment, and returns a context_path_warning.",
         },
         credential_ref: {
           type: "string",
@@ -105,6 +122,43 @@ Scopes:
         },
       },
       required: ["agent_id", "content"],
+    },
+  },
+  {
+    name: "hierarchy_find",
+    description: `Find where something belongs in the memory tree (Universe >
+Concept > Theme > Topic > Point).
+
+Read-only: it never writes a memory or a node. It runs the same classifier the
+backend uses at write time and returns the top candidate nodes for your query,
+each with its full path BY NAME and a confidence in [0,1].
+
+Call it in two moments:
+- BEFORE memory_store — copy the best candidate's context_path (by name) into
+  memory_store(context_path=...) so the memory anchors on the right node and
+  clears the 0.60 auto-anchor threshold instead of landing in the review queue.
+- BEFORE a tree-specific search — to confirm which branch to look in.
+
+Copy the context_path (the names), never the context_id (UUID). Universe
+permission is enforced: a restricted caller only sees candidates in universes it
+may read, and an explicit universe_id it cannot read is rejected (403).`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        query_text: {
+          type: "string",
+          description: "What to situate in the tree — the subject of the memory you are about to store, or the search you are about to run.",
+        },
+        universe_id: {
+          type: "string",
+          description: "Optional UUID to restrict candidates to one universe (must be one you may read). Omit to search every universe you can access.",
+        },
+        limit: {
+          type: "integer",
+          description: "Max candidates to return (default 5, max 25).",
+        },
+      },
+      required: ["query_text"],
     },
   },
   {

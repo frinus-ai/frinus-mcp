@@ -350,6 +350,13 @@ function renderStoreResult(result: any): string {
   const status = result?.classification_status as string | undefined;
   const head = `✓ Salva`;
 
+  // Non-fatal note when a supplied context_path did not fully resolve by name
+  // (ambiguous or missing segment). The memory WAS stored; this is appended to
+  // whatever destination line we render below so the caller can fix the path.
+  const warning = typeof result?.context_path_warning === "string" && result.context_path_warning
+    ? `\n  ⚠ context_path: ${result.context_path_warning}`
+    : "";
+
   const applied = appliedLabel(result);
   const pending = status === "proposed" || status === "universe_only";
 
@@ -363,7 +370,7 @@ function renderStoreResult(result: any): string {
         out += `\n  ↳ sugestão pendente (NÃO aplicada): ${sug} — revise com memory_classification_pending`;
       }
     }
-    return out;
+    return out + warning;
   }
 
   // Not anchored anywhere: the suggestion is all we have to offer.
@@ -372,13 +379,13 @@ function renderStoreResult(result: any): string {
     const conf = confidenceLabel(result?.classification_confidence);
     if (sug) {
       const confTxt = conf ? `, confiança ${conf}` : "";
-      return `${head} · sem destino aplicado · sugestão: ${sug} (auto${confTxt}) — aprove com memory_classification_approve`;
+      return `${head} · sem destino aplicado · sugestão: ${sug} (auto${confTxt}) — aprove com memory_classification_approve` + warning;
     }
-    return `${head} · sem destino aplicado e sem sugestão confiável — use memory_classification_pending para revisar`;
+    return `${head} · sem destino aplicado e sem sugestão confiável — use memory_classification_pending para revisar` + warning;
   }
 
   // Defensive: older backend without classification fields, or no hierarchy at all.
-  return `${head}\nID: ${id}\nType: ${result?.memory_type}\nScope: ${result?.scope}`;
+  return `${head}\nID: ${id}\nType: ${result?.memory_type}\nScope: ${result?.scope}` + warning;
 }
 
 // ---------------------------------------------------------------------------
@@ -420,6 +427,7 @@ const handlers: Record<string, HandlerFn> = {
         created_by_user_id: createdByUser,
         metadata: args.metadata as Record<string, unknown> | undefined,
         context_id: args.context_id as string | undefined,
+        context_path: args.context_path as string | undefined,
         credential_ref: args.credential_ref as string | undefined,
         universe_id: universeId,
         scope: args.scope as string | undefined,
@@ -430,6 +438,44 @@ const handlers: Record<string, HandlerFn> = {
       if (apiErr) return apiErr;
       throw error;
     }
+  },
+
+  async hierarchy_find(args, { memoryClient }) {
+    let result: any;
+    try {
+      result = await memoryClient.findHierarchy({
+        query_text: args.query_text as string,
+        universe_id: args.universe_id as string | undefined,
+        limit: args.limit as number | undefined,
+      });
+    } catch (error: any) {
+      const apiErr = handleApiError(error);
+      if (apiErr) return apiErr;
+      throw error;
+    }
+
+    const candidates = Array.isArray(result?.candidates) ? result.candidates : [];
+    if (candidates.length === 0) {
+      return {
+        content: [{
+          type: "text",
+          text: "Nenhum nó candidato para esta consulta. Salve mesmo assim (o backend classifica ou cai no universo/Geral), ou refine a consulta.",
+        }],
+      };
+    }
+
+    let formatted = "Nós candidatos (copie o caminho POR NOME para memory_store(context_path=...)):\n\n";
+    candidates.forEach((c: any, i: number) => {
+      const path = typeof c?.context_path === "string" ? c.context_path : "(sem caminho)";
+      const conf = confidenceLabel(c?.confidence);
+      const confTxt = typeof c?.confidence === "number"
+        ? ` (confiança ${c.confidence.toFixed(2)}${conf ? ` · ${conf}` : ""})`
+        : "";
+      const level = c?.level ? ` [${c.level}]` : "";
+      formatted += `${i + 1}. ${path}${level}${confTxt}\n`;
+    });
+    formatted += "\nCopie o caminho (os nomes), não o context_id. Confiança ≥ 0,60 ancora sozinho; abaixo disso vai para a fila de revisão.";
+    return { content: [{ type: "text", text: formatted }] };
   },
 
   // ==========================================================================
