@@ -1471,6 +1471,19 @@ const handlers: Record<string, HandlerFn> = {
         formatted += `\n### Delegate Targets\n${delegateDigest.summary}\n`;
       }
 
+      // Shallow tree map (universe → concept) for orientation. The lines are
+      // already composed and truncated server-side; print them verbatim. Use
+      // hierarchy_find(query) for the exact node, universe_hierarchy for the
+      // full tree.
+      const hierarchyMap = runtime.hierarchy_map || [];
+      if (Array.isArray(hierarchyMap) && hierarchyMap.length > 0) {
+        formatted += `\n### Árvore (navegação)\n`;
+        formatted += `Mapa raso para orientação; use hierarchy_find(query) para achar o nó exato e universe_hierarchy para a árvore completa.\n`;
+        hierarchyMap.forEach((line: unknown) => {
+          if (typeof line === "string" && line) formatted += `- ${line}\n`;
+        });
+      }
+
       const notif = await notifPromise;
       if (notif) formatted += `\n\n${notif}`;
 
