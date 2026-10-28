@@ -68,6 +68,52 @@ export class MemoryClient implements MemoryClientInterface {
   }
 
   // =========================================================================
+  // Delegated-sleep work (sleep_work_*)
+  //
+  // Judgment steps of the sleep cycle delegated to the client's LLM. The server
+  // owns the policy (leases, limits, provenance, what may be auto-applied); the
+  // client only chooses among candidates or "none". See contract v1.
+  // =========================================================================
+
+  /**
+   * GET /sleep-work/pending — cheap COUNT of items waiting for judgment, scoped
+   * to universes the caller can read. Used by the bootstrap/heartbeat nudge, so
+   * it takes a tight timeout and never falls back to the 30s default.
+   */
+  async getSleepWorkPending(timeoutMs?: number): Promise<any> {
+    const response = await this.client.get("/sleep-work/pending", {
+      timeout: timeoutMs ?? 1500,
+    });
+    return response.data;
+  }
+
+  /** POST /sleep-work/next — lease a batch of work items for this user. */
+  async getSleepWorkNext(data: {
+    kind: string; limit?: number; universe_id?: string;
+  }): Promise<any> {
+    const payload: Record<string, unknown> = { kind: data.kind };
+    if (typeof data.limit === "number") payload.limit = data.limit;
+    if (data.universe_id) payload.universe_id = data.universe_id;
+    const response = await this.client.post("/sleep-work/next", payload);
+    return response.data;
+  }
+
+  /** POST /sleep-work/submit — return decisions for a lease. Idempotent. */
+  async submitSleepWork(data: {
+    kind: string; lease_id: string; model: string; run_label: string;
+    results: Array<{ work_id: string; choice: string; confidence?: number; reason?: string }>;
+  }): Promise<any> {
+    const response = await this.client.post("/sleep-work/submit", {
+      kind: data.kind,
+      lease_id: data.lease_id,
+      model: data.model,
+      run_label: data.run_label,
+      results: data.results,
+    });
+    return response.data;
+  }
+
+  // =========================================================================
   // Session Management
   // =========================================================================
 

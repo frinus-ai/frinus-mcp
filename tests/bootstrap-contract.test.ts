@@ -176,6 +176,51 @@ test("bootstrap still succeeds when session_start fails", async () => {
   assert.equal(getReorientConfig().reorientEveryN, 7);
 });
 
+test("delegated-sleep nudge renders just below the contract, above the system prompt", async () => {
+  const { __resetSleepWorkState } = await import("../src/sleep-work.js");
+  __resetSleepWorkState();
+  delete process.env.FRINUS_SLEEP_WORK;
+  try {
+    const { deps } = makeDeps({});
+    (deps as any).memoryClient = {
+      startSession: async () => ({ session_id: "formal-session-123" }),
+      getSleepWorkPending: async () => ({ kinds: { classification: { available: 12, daily_remaining: 500 } } }),
+    };
+    const res = await dispatchTool("agent_bootstrap", { agent_id: "11111111-1111-1111-1111-111111111111" }, deps);
+    const text = res.content[0].text;
+    const contractIdx = text.indexOf("Contrato de Boot");
+    const nudgeIdx = text.indexOf("Sono delegado");
+    const promptIdx = text.indexOf("## System Prompt");
+    assert.ok(nudgeIdx >= 0, "sleep-work nudge present");
+    assert.match(text, /12 em classificação/);
+    assert.ok(contractIdx < nudgeIdx, "nudge after the contract");
+    assert.ok(nudgeIdx < promptIdx, "nudge before the system prompt");
+  } finally {
+    process.env.FRINUS_SLEEP_WORK = "off";
+    __resetSleepWorkState();
+  }
+});
+
+test("bootstrap still succeeds when the sleep-work poll fails", async () => {
+  const { __resetSleepWorkState } = await import("../src/sleep-work.js");
+  __resetSleepWorkState();
+  delete process.env.FRINUS_SLEEP_WORK;
+  try {
+    const { deps } = makeDeps({});
+    (deps as any).memoryClient = {
+      startSession: async () => ({ session_id: "formal-session-123" }),
+      getSleepWorkPending: async () => { throw new Error("memory engine 404"); },
+    };
+    const res = await dispatchTool("agent_bootstrap", { agent_id: "11111111-1111-1111-1111-111111111111" }, deps);
+    assert.ok(!res.isError, "a pending-poll failure must not fail bootstrap");
+    assert.match(res.content[0].text, /Contrato de Boot/);
+    assert.doesNotMatch(res.content[0].text, /Sono delegado/);
+  } finally {
+    process.env.FRINUS_SLEEP_WORK = "off";
+    __resetSleepWorkState();
+  }
+});
+
 test("notifications block is rendered at the TOP, above the Boot Contract", async () => {
   const { __resetNotificationsState } = await import("../src/notifications.js");
   __resetNotificationsState();

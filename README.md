@@ -9,9 +9,9 @@ It does **not** run on its own. It stores nothing locally: every tool call is fo
 1. a **Frinus account** (free, no card), and
 2. a **Frinus API key** (`sk-frinus-...`).
 
-With those in place, the server exposes **70 tools** spanning cognitive memory, working memory, sessions, agents, the L0–L3 knowledge hierarchy, orchestration tasks, and training pipelines. It speaks stdio and works with any MCP-aware client.
+With those in place, the server exposes **93 tools** spanning cognitive memory, working memory, sessions, agents, the L0–L3 knowledge hierarchy, orchestration tasks, and training pipelines. It speaks stdio and works with any MCP-aware client.
 
-- **Version:** 3.8.0
+- **Version:** 3.9.0
 - **Tools:** 70 (see [Tools Reference](#tools-reference))
 - **Platform:** https://frinus.rdxsec.com.br (hosted SaaS — the backend this server talks to)
 - **npm package:** [`frinus-mcp`](https://www.npmjs.com/package/frinus-mcp)
@@ -155,7 +155,7 @@ Detailed protocol scripts live in the agent's `CLAUDE.md`. Treat the table above
 
 ## Tools Reference
 
-70 tools grouped by domain. Every tool returns text content; payloads follow the MCP `Tool` spec. Full JSON schemas live in [`src/tools/definitions.ts`](src/tools/definitions.ts).
+93 tools grouped by domain. Every tool returns text content; payloads follow the MCP `Tool` spec. Full JSON schemas live in [`src/tools/definitions.ts`](src/tools/definitions.ts).
 
 ### Memory (7)
 
@@ -470,7 +470,7 @@ mcp/
       cp-client.ts                 HTTP client for Control Plane
       agent-client.ts              HTTP client for Agent Service
     tools/
-      definitions.ts               Tool schemas (70 tools)
+      definitions.ts               Tool schemas (93 tools)
       handlers.ts                  Tool handlers (70 handlers)
     capture/
       interaction-capture.ts       Auto stream capture for every tool call

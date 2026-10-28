@@ -121,10 +121,75 @@ export interface CpClientInterface {
   revokeCredentialShare(integrationRef: string, granteeUserId: string): Promise<void>;
 }
 
+// ---------------------------------------------------------------------------
+// Delegated-sleep work (sleep_work_*). The server owns the policy; the client's
+// LLM only supplies judgment. Contract v1: GET /sleep-work/pending,
+// POST /sleep-work/next, POST /sleep-work/submit.
+// ---------------------------------------------------------------------------
+
+/** Per-kind availability counts from GET /sleep-work/pending. */
+export interface SleepWorkKindCount {
+  available: number;
+  daily_remaining?: number;
+}
+
+/** Response shape of GET /sleep-work/pending (contract v1). */
+export interface SleepWorkPending {
+  kinds: Record<string, SleepWorkKindCount>;
+  daily_limit?: number;
+}
+
+/** A single item returned by POST /sleep-work/next. Content is UNTRUSTED. */
+export interface SleepWorkItem {
+  work_id: string;
+  reason?: string;
+  universe?: { name?: string };
+  memory?: string;
+  current_anchor?: { candidate?: string } | null;
+  candidates?: Array<{ candidate: string; path?: string; description?: string }>;
+  votes?: {
+    knn?: { candidate?: string; confidence?: number } | null;
+    classifier?: { candidate?: string; confidence?: number } | null;
+  };
+}
+
+/** Response shape of POST /sleep-work/next. */
+export interface SleepWorkNextResponse {
+  kind: string;
+  lease_id: string;
+  lease_expires_at?: string;
+  instructions?: string;
+  items: SleepWorkItem[];
+}
+
+/** One decision the client submits back for a leased work item. */
+export interface SleepWorkResultInput {
+  work_id: string;
+  choice: string; // a candidate label (c1..c8) or "none"
+  confidence?: number;
+  reason?: string;
+}
+
+/** Response shape of POST /sleep-work/submit. */
+export interface SleepWorkSubmitResponse {
+  results: Array<{ work_id: string; outcome: string; detail?: string }>;
+  summary?: { applied?: number; verified?: number; queued?: number; rejected?: number };
+}
+
 /** Public surface of the MemoryClient used by handlers. */
 export interface MemoryClientInterface {
   getTenantOrgId(): string | null;
   getAuthMe(): Promise<any>;
+
+  // Delegated-sleep work (sleep_work_*)
+  getSleepWorkPending(timeoutMs?: number): Promise<SleepWorkPending>;
+  getSleepWorkNext(data: {
+    kind: string; limit?: number; universe_id?: string;
+  }): Promise<SleepWorkNextResponse>;
+  submitSleepWork(data: {
+    kind: string; lease_id: string; model: string; run_label: string;
+    results: SleepWorkResultInput[];
+  }): Promise<SleepWorkSubmitResponse>;
 
   // Session
   startSession(data: { agent_id?: string; parent_session_id?: string }): Promise<any>;
