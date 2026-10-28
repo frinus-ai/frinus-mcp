@@ -81,6 +81,28 @@ test("render: classification wins the example kind when several are available", 
   assert.match(block, /sleep_work_next\(kind="classification"\)/);
 });
 
+test("render: by_reason split is shown when present (per-kind), tolerant of absence", () => {
+  const withSplit = renderSleepWorkBlock({
+    kinds: { classification: { available: 42, daily_remaining: 500, by_reason: { l5_queue: 30, l2_unverified: 12 } } },
+  });
+  assert.match(withSplit, /42 em classificação de memórias na fila/);
+  assert.match(withSplit, /30 L5/);
+  assert.match(withSplit, /12 L2/);
+
+  // Top-level by_reason also works for the classification kind.
+  const topLevel = renderSleepWorkBlock({
+    kinds: { classification: { available: 42, daily_remaining: 500 } },
+    by_reason: { l5_queue: 40, l2_unverified: 2 },
+  });
+  assert.match(topLevel, /40 L5/);
+  assert.match(topLevel, /2 L2/);
+
+  // No by_reason: the nudge renders fine without a split.
+  const none = renderSleepWorkBlock({ kinds: { classification: { available: 5 } } });
+  assert.match(none, /5 em classificação/);
+  assert.doesNotMatch(none, /L5|L2/);
+});
+
 // ---------------------------------------------------------------------------
 // fetchSleepWorkBlock
 // ---------------------------------------------------------------------------

@@ -3,6 +3,40 @@
 All notable changes to the Frinus MCP server. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [3.9.1] - 2026-10-28
+
+### Fixed
+- **Delegated-sleep output no longer blows past Claude Code's limit.** A real
+  MUZA lease of 20 items rendered to 74,582 chars and overflowed the client.
+  `sleep_work_next` now:
+  - **Smaller leases** — `limit` default is **8** (was 10) and is **clamped to
+    1–10** both in the schema and the handler.
+  - **Compact rendering** — one header line per item (work_id · reason ·
+    universe), the memory, each candidate on a single `cN  path — descrição`
+    line, votes on one line. The anti-injection warning is printed **once** at
+    the top (not per item); no raw JSON, no dead/null lines (e.g. the old empty
+    "Âncora atual:").
+  - **Defensive truncation in the MCP** — memory ≤ 1500, description ≤ 300,
+    path ≤ 300, then a compact display cap on the content shown per item. The
+    `<untrusted_… nonce="…">` delimiters are always kept intact: truncation cuts
+    *inside* the content (never the closing tag), and the budget is capped on the
+    **inner** content, so a long server nonce can never defeat the cut.
+  - **Hard output guard** — items render until a budget is reached, then the
+    render stops and says how many were omitted (pointing at a smaller `limit`),
+    so the output is bounded below the client limit for any input. A full 10×8
+    lease renders whole at ~18k chars.
+
+### Added
+- **`reason` filter on `sleep_work_next`** — optional `"l5_queue"` /
+  `"l2_unverified"`, forwarded to `POST /sleep-work/next`.
+- **Empty candidate lists** — when the server returns no candidate in the
+  memory's own universe, the item shows `sem candidatos no universo — responda
+  "none"`. The explicit escape hatch `none = fica só no universo (nenhum nó
+  serve)` is now always offered, and both tool descriptions document it.
+- **`by_reason` pending split** — the bootstrap/heartbeat nudge shows the
+  `l5_queue` / `l2_unverified` breakdown from `GET /sleep-work/pending` when
+  present (additive, tolerant of absence).
+
 ## [3.9.0] - 2026-10-28
 
 ### Added

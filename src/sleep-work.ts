@@ -121,11 +121,18 @@ export function renderSleepWorkBlock(pending?: SleepWorkPending): string {
   if (entries.length === 0) return "";
 
   // Summaries per available kind, e.g. "42 em classificação de memórias na fila
-  // (restam 500 hoje)".
+  // (restam 500 hoje)". When a per-reason split is present (contract v1.1, either
+  // per-kind or top-level) append it — additive and tolerant of absence.
+  const topReason = pending?.by_reason;
   const parts = entries.map(([kind, v]) => {
     const remaining =
       typeof v.daily_remaining === "number" ? ` (restam ${v.daily_remaining} hoje)` : "";
-    return `${v.available} em ${kindLabel(kind)}${remaining}`;
+    const br = v.by_reason || (kind === "classification" ? topReason : undefined);
+    const split: string[] = [];
+    if (br && typeof br.l5_queue === "number") split.push(`${br.l5_queue} L5`);
+    if (br && typeof br.l2_unverified === "number") split.push(`${br.l2_unverified} L2`);
+    const breakdown = split.length ? ` [${split.join(", ")}]` : "";
+    return `${v.available} em ${kindLabel(kind)}${breakdown}${remaining}`;
   });
 
   // Prefer the single canonical kind for the call example; fall back to the

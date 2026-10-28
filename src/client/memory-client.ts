@@ -90,10 +90,12 @@ export class MemoryClient implements MemoryClientInterface {
   /** POST /sleep-work/next — lease a batch of work items for this user. */
   async getSleepWorkNext(data: {
     kind: string; limit?: number; universe_id?: string;
+    reason?: "l5_queue" | "l2_unverified";
   }): Promise<any> {
     const payload: Record<string, unknown> = { kind: data.kind };
     if (typeof data.limit === "number") payload.limit = data.limit;
     if (data.universe_id) payload.universe_id = data.universe_id;
+    if (data.reason) payload.reason = data.reason;
     const response = await this.client.post("/sleep-work/next", payload);
     return response.data;
   }

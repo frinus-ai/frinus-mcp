@@ -127,19 +127,36 @@ export interface CpClientInterface {
 // POST /sleep-work/next, POST /sleep-work/submit.
 // ---------------------------------------------------------------------------
 
+/** Breakdown of pending/available items by why they are in the queue. Additive
+ * (contract v1.1); every field is optional and tolerated when absent. */
+export interface SleepWorkByReason {
+  l5_queue?: number;
+  l2_unverified?: number;
+}
+
 /** Per-kind availability counts from GET /sleep-work/pending. */
 export interface SleepWorkKindCount {
   available: number;
   daily_remaining?: number;
+  /** Optional per-reason split of `available` (contract v1.1). */
+  by_reason?: SleepWorkByReason;
 }
 
-/** Response shape of GET /sleep-work/pending (contract v1). */
+/** Response shape of GET /sleep-work/pending (contract v1 + v1.1 additions). */
 export interface SleepWorkPending {
   kinds: Record<string, SleepWorkKindCount>;
   daily_limit?: number;
+  /** Optional top-level per-reason split (contract v1.1). Some servers nest it
+   * under each kind instead; the nudge renders whichever is present. */
+  by_reason?: SleepWorkByReason;
 }
 
-/** A single item returned by POST /sleep-work/next. Content is UNTRUSTED. */
+/** Why an item is in the sleep-work queue. */
+export type SleepWorkReason = "l5_queue" | "l2_unverified";
+
+/** A single item returned by POST /sleep-work/next. Content is UNTRUSTED.
+ * `candidates` may be an EMPTY list when the server found no node in the memory's
+ * own universe — the client must then answer "none". */
 export interface SleepWorkItem {
   work_id: string;
   reason?: string;
@@ -184,7 +201,7 @@ export interface MemoryClientInterface {
   // Delegated-sleep work (sleep_work_*)
   getSleepWorkPending(timeoutMs?: number): Promise<SleepWorkPending>;
   getSleepWorkNext(data: {
-    kind: string; limit?: number; universe_id?: string;
+    kind: string; limit?: number; universe_id?: string; reason?: SleepWorkReason;
   }): Promise<SleepWorkNextResponse>;
   submitSleepWork(data: {
     kind: string; lease_id: string; model: string; run_label: string;
