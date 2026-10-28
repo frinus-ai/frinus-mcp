@@ -6,4 +6,4 @@
  * matches the running build. Keep in sync with `package.json` and
  * `manifest.json` at release time.
  */
-export const MCP_VERSION = "3.9.2";
+export const MCP_VERSION = "3.10.0";

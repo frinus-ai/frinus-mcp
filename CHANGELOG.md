@@ -3,6 +3,28 @@
 All notable changes to the Frinus MCP server. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [3.10.0] - 2026-10-28
+
+### Added
+- **Delegated-sleep Phase 2 — all four remaining kinds are served:**
+  `consolidation_summary`, `conflict_resolution`, `node_description` and
+  `structure_suggestion` (previously `501 not supported yet`). `sleep_work_next`
+  renders these self-describing items with a dedicated compact Phase-2 renderer
+  (`subject` + `context[]` + optional `options[]` + a `decision` cue telling the
+  client to answer with `choice` or `text`), under the same untrusted-delimiter
+  framing, per-field caps and hard output budget as classification.
+- **`sleep_work_submit` accepts a free-text `text` field** (≤4000 chars) alongside
+  `choice`, passed through to the server for the text-producing kinds; `choice`
+  defaults to `none`. `work_id` is now the only required result field.
+
+### Changed
+- `sleep_work_next`/`sleep_work_submit` tool descriptions document the five kinds,
+  each decision shape, and the server's hard locks (a contradiction is never
+  auto-superseded, a structure suggestion is only enqueued, a curated description
+  is never overwritten, a changed consolidation group is refused). The server owns
+  all policy and revalidates every decision; the kill-switch (server LLM on for a
+  tenant/phase) makes a kind return nothing to the client.
+
 ## [3.9.2] - 2026-10-28
 
 ### Changed

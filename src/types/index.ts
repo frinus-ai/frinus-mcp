@@ -161,12 +161,25 @@ export interface SleepWorkItem {
   work_id: string;
   reason?: string;
   universe?: { name?: string };
+  // Phase 1 (classification) fields:
   memory?: string;
   current_anchor?: { candidate?: string } | null;
   candidates?: Array<{ candidate: string; path?: string; description?: string }>;
   votes?: {
     knn?: { candidate?: string; confidence?: number } | null;
     classifier?: { candidate?: string; confidence?: number } | null;
+  };
+  // Phase 2 (self-describing) fields:
+  subject?: { title?: string; body?: string };
+  context?: Array<{ label?: string; text?: string }>;
+  options?: Array<{ choice?: string; label?: string }>;
+  decision?: {
+    type?: "text" | "choice";
+    field?: string;
+    format?: string;
+    hint?: string;
+    min_chars?: number;
+    max_chars?: number;
   };
 }
 
@@ -179,10 +192,12 @@ export interface SleepWorkNextResponse {
   items: SleepWorkItem[];
 }
 
-/** One decision the client submits back for a leased work item. */
+/** One decision the client submits back for a leased work item. ``choice`` for
+ * classification/conflict_resolution; ``text`` for the text-producing kinds. */
 export interface SleepWorkResultInput {
   work_id: string;
-  choice: string; // a candidate label (c1..c8) or "none"
+  choice?: string; // a candidate label (c1..cN), "c1"/"c2", or "none"
+  text?: string;   // free-text answer for text-producing kinds
   confidence?: number;
   reason?: string;
 }

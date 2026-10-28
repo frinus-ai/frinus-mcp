@@ -103,7 +103,7 @@ export class MemoryClient implements MemoryClientInterface {
   /** POST /sleep-work/submit — return decisions for a lease. Idempotent. */
   async submitSleepWork(data: {
     kind: string; lease_id: string; model: string; run_label: string;
-    results: Array<{ work_id: string; choice: string; confidence?: number; reason?: string }>;
+    results: Array<{ work_id: string; choice?: string; text?: string; confidence?: number; reason?: string }>;
   }): Promise<any> {
     const response = await this.client.post("/sleep-work/submit", {
       kind: data.kind,
