@@ -3,6 +3,25 @@
 All notable changes to the Frinus MCP server. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [3.9.2] - 2026-10-28
+
+### Changed
+- **Delegated-sleep items are legible again.** 3.9.1 kept the lease under 20k
+  chars, but at 380 chars of memory and 20 per candidate description, because
+  the server's per-field `<untrusted id=…>` wrappers ate about half of the
+  output. `sleep_work_next` now uses **one untrusted delimiter per item** (plus
+  one for the batch legend) with a fresh MCP-generated nonce, and defangs any
+  untrusted-like tag inside the data. Each candidate node's description is shown
+  **once** in a batch legend (nodes repeat across items in real leases); two
+  different nodes with the same path get `[2]`, `[3]`. The memory is shown up to
+  ~1000 chars and descriptions up to ~150. Caps degrade step by step to fit the
+  budget before any item is omitted. A realistic 8-item lease = ~17.4k chars,
+  with nothing omitted.
+- **Reference kNN vote.** When the kNN abstains (shadow mode or below the
+  calibrated cut), the server now sends its top node with `below_cut: true`. The
+  render shows it as "abaixo do corte, só referência", and it never counts for
+  auto-apply.
+
 ## [3.9.1] - 2026-10-28
 
 ### Fixed
