@@ -22,7 +22,7 @@ oficial leva o cliente para dentro do WSL2, onde funciona como no Linux.
 **Windows** — dê **duplo clique** em `Instalar-Frinus.cmd`. Ou, num PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v9/install/setup.ps1 | iex
+irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v10/install/setup.ps1 | iex
 ```
 
 Quem instala só faz isto:
@@ -43,10 +43,10 @@ de novo.
 **Linux / macOS** (ou dentro do Ubuntu, se preferir manual):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v9/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v10/install/install.sh | bash
 ```
 
-Os endereços apontam para a **tag imutável** `client-installer-v9` — ver
+Os endereços apontam para a **tag imutável** `client-installer-v10` — ver
 "Versionamento" abaixo.
 
 ## O que o cliente precisa ter em mãos
@@ -62,16 +62,16 @@ Os endereços apontam para a **tag imutável** `client-installer-v9` — ver
 executar, os hashes SHA-256 dos scripts desta release são:
 
 ```
-install.sh            9d2c4380067e5076d071dcabed33afdf4afb5971a3ff33392dad064d4177a17d
-setup.ps1             63622e56a499e00618e3d534b0f13810066c9b788f638465fddd59b0aaee58c6
-Instalar-Frinus.cmd   fd4dc3a436bec22589a366215bf7ecfdf34ac56f3ce185b20537871bb0e995ab
+install.sh            ee5a8506be8718c517e1fcc4a1a86d490c0ea5d6e7149a9a029dc9a04d6e40b9
+setup.ps1             1bff451eb9b26201a598664b1ae2d52859e15c97bf99063b2aea33a89e7e9e89
+Instalar-Frinus.cmd   fef961b2b9b03295b69b9c857f2ef8ee42432102005e49f546fe4c8abb368d18
 frinus.ico            d5ad20d853234a77df9d4e667e6eec53b0cd97933d2a937eaff7573d5effa8b6
 ```
 
 Conferir no Linux/macOS antes de rodar:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v9/install/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v10/install/install.sh -o install.sh
 sha256sum install.sh   # deve bater com o hash acima
 less install.sh        # revise, depois: bash install.sh
 ```
@@ -79,7 +79,7 @@ less install.sh        # revise, depois: bash install.sh
 Conferir no Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v9/install/setup.ps1 -OutFile setup.ps1
+irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v10/install/setup.ps1 -OutFile setup.ps1
 Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
 ```
 
@@ -101,22 +101,53 @@ Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
   (autenticado só pela chave) e monta as instruções de partida com o assistente
   principal correto da organização — nada é fixado no código.
 
+## Novidades da v10
+
+- **Passo 8 (teste de memória) nunca mais bloqueia.** Virou diagnóstico: a única
+  etapa que barra a instalação é a validação da chave (passo 3). Conta de
+  **Consulta** (consumer) que não grava recebe um aviso amigável, não um erro.
+- **Comando/atalho sempre criados antes de qualquer etapa de rede.** O launcher
+  `~/.local/bin/frinus`, o alias e o atalho (Mac/Windows) são criados logo após a
+  chave ser validada. No Windows, o atalho é criado sempre que o launcher existir
+  no Ubuntu — mesmo que o `install.sh` termine com um aviso.
+- **Fim do `NativeCommandError` no PowerShell 5.1.** Toda chamada nativa (`wsl.exe`,
+  `bcdedit`) passa pelo helper `Invoke-Nativo` (roda com `$ErrorActionPreference=Continue`
+  e decide pelo `$LASTEXITCODE`), então o stderr do `wsl.exe` ("a máquina virtual…
+  não está em execução") não aborta mais o instalador.
+- **Auto-reparo do WSL.** Quando o Ubuntu não sobe mesmo com a virtualização ligada
+  na BIOS, o `setup.ps1` tenta `wsl --shutdown`, liga as features
+  `Microsoft-Windows-Subsystem-Linux` e `VirtualMachinePlatform`, ajusta
+  `bcdedit hypervisorlaunchtype` para `Auto` e faz uma segunda tentativa antes de
+  pedir reinício — e só então cai na mensagem amigável.
+
 ## Versionamento (para mantenedores)
 
-Os one-liners apontam para a **tag** `client-installer-v9`, não para `main`.
+Os one-liners apontam para a **tag** `client-installer-v10`, não para `main`.
 Motivo: `main` é mutável — qualquer commit no repo mudaria o que os clientes já
 distribuídos executam. Uma tag é imutável e intencional: o cliente sempre roda
 exatamente o que foi revisado naquela release.
+
+> **Compatibilidade com `.cmd` antigos (v1–v9).** Um `Instalar-Frinus.cmd` já
+> distribuído aponta para `raw.githubusercontent.com/.../client-installer-vN/install/setup.ps1`.
+> Para que essas cópias antigas rodem a v10, as tags `client-installer-v1..v9`
+> foram **movidas (force) para o commit da v10** — toda tag antiga passa a servir
+> os scripts da v10. Ao publicar uma versão nova, mova de novo as tags antigas
+> para o commit novo (ou mantenha esse procedimento no `publicar-release-mcp`).
 
 Para publicar/atualizar:
 
 ```bash
 # na branch com estes arquivos, após revisar:
-git tag client-installer-v9        # ou -v3, -v4... a cada nova release do instalador
-git push origin main --tags        # ou push da branch + tag
+git tag client-installer-v10        # a cada nova release do instalador
+git push origin feat/client-installer --tags
 
-# ao mudar os scripts: recalcule os hashes e crie uma tag NOVA (não mova a antiga)
-sha256sum install/install.sh install/setup.ps1
+# mover as tags antigas para o commit da v10 (cópias antigas rodam a v10):
+NEW=$(git rev-parse client-installer-v10)
+for n in $(seq 1 9); do git tag -f client-installer-v$n "$NEW"; done
+git push origin --force $(for n in $(seq 1 9); do echo client-installer-v$n; done)
+
+# ao mudar os scripts: recalcule os hashes e atualize o bloco SHA-256 acima
+sha256sum install/install.sh install/setup.ps1 install/Instalar-Frinus.cmd install/frinus.ico
 ```
 
 Para trocar a versão que os clientes usam, atualize o número da tag nos one-liners

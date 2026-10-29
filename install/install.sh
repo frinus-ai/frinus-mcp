@@ -9,9 +9,14 @@
 #   1. Garante que os programas de base estão instalados (Node, Claude Code)
 #   2. Pede a sua chave de acesso do Frinus (colada, sem aparecer na tela)
 #   3. Descobre automaticamente a qual empresa a sua chave pertence
-#   4. Conecta o assistente à sua memória do Frinus
+#   4. Liga a memória por padrão e prepara o comando/atalho "frinus"
 #   5. Faz login na sua conta Claude (passo que só você pode fazer)
-#   6. Testa de verdade: grava uma memória e confirma que ela foi lida
+#   6. Conecta o assistente à sua memória do Frinus
+#   7. Confere a memória de verdade (diagnóstico — nunca interrompe a instalação)
+#
+# Ordem de propósito: tudo que é local e nunca falha (comando "frinus", equipe de
+# especialistas, memória ligada, atalho) é criado ANTES das etapas que dependem
+# de rede. A ÚNICA etapa que de fato bloqueia é a validação da sua chave (passo 3).
 #
 # Pode rodar quantas vezes quiser: ele detecta o que já existe e não duplica nada.
 #
@@ -54,7 +59,7 @@ trap 'parar "Algo não saiu como esperado durante a instalação." "Tente rodar 
 # ---------------------------------------------------------------------------
 CP_URL="${FRINUS_CP_URL:-https://frinus-api.rdxsec.com.br}"
 MEMORY_URL="${MEMORY_SERVICE_URL:-https://frinus-memory.rdxsec.com.br}"
-ICONE_URL="https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v9/install/frinus.ico"
+ICONE_URL="https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v10/install/frinus.ico"
 NOME_CONEXAO="frinus-mcp"   # nome interno da conexão (mantém tudo consistente)
 
 titulo "Frinus — vamos dar memória ao seu assistente"
@@ -154,7 +159,7 @@ esac
 [ "$REAPROVEITADA" = "sim" ] || ok "Chave recebida."
 
 # ===========================================================================
-# 3) Descobrir automaticamente a empresa dona da chave
+# 3) Descobrir automaticamente a empresa dona da chave  (ÚNICA etapa que bloqueia)
 # ===========================================================================
 titulo "3) Reconhecendo a sua conta"
 passo "Confirmando a chave com o Frinus..."
@@ -181,79 +186,12 @@ if [ -z "$CEREBRO_ID" ]; then
 fi
 
 # ===========================================================================
-# 4) Login na conta Claude (o único passo que só VOCÊ pode fazer)
+# 4) Ligar a memória por padrão (instruções de partida do assistente)
 # ===========================================================================
-titulo "4) Login na sua conta Claude"
-
-# Atalho SÓ para testes/CI (nunca usado pelo cliente): o one-liner do cliente
-# jamais define esta variável. Ela pula o passo de login interativo — que é o
-# único passo impossível de automatizar (abre o navegador). Não mascara falha
-# real do cliente: a conexão da memória e o teste final (passo 8) dependem da
-# chave do Frinus, não do login do Claude.
-if [ "${FRINUS_SELFTEST_SKIP_LOGIN:-}" = "1" ]; then
-  aviso "[autoteste] Passo de login pulado (modo de verificação interna)."
-  LOGADO="sim"
-else
-LOGADO="$(claude auth status 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).loggedIn?"sim":"nao")}catch(e){process.stdout.write("nao")}})' 2>/dev/null || echo nao)"
-fi
-
-if [ "$LOGADO" = "sim" ]; then
-  pulou "Você já está logado na sua conta Claude — pulando."
-elif [ "${FRINUS_DEFER_LOGIN:-}" = "1" ]; then
-  # Instalação em lote (Windows): o login fica para o primeiro uso do assistente,
-  # que pede a conta Claude sozinho ao abrir. A memória não depende do login.
-  pulou "O login na conta Claude será pedido na primeira vez que você abrir o assistente."
-else
-  printf '%sAgora abre a etapa de login. Vai aparecer um endereço/código na tela:\n' "$DIM"
-  printf '  • copie o endereço no seu navegador (ou siga as instruções que aparecerem);\n'
-  printf '  • entre com a sua conta Claude (plano Pro ou Max);\n'
-  printf '  • quando terminar, esta janela segue sozinha.%s\n\n' "$FIM"
-  printf 'Pressione ENTER para começar o login... '
-  if { : </dev/tty; } 2>/dev/null; then read -r _ </dev/tty || true; else read -r _ || true; fi
-  { if { : </dev/tty; } 2>/dev/null; then claude auth login </dev/tty; else claude auth login; fi; } || parar "O login não foi concluído." "Rode o instalador de novo e complete o login na sua conta Claude."
-  LOGADO="$(claude auth status 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).loggedIn?"sim":"nao")}catch(e){process.stdout.write("nao")}})' 2>/dev/null || echo nao)"
-  [ "$LOGADO" = "sim" ] || parar "O login ainda não foi concluído." "Rode o instalador de novo e finalize o login na sua conta Claude."
-  ok "Login concluído."
-fi
-
-# Aviso gentil se o plano não permitir usar o assistente (não bloqueia).
-PLANO="$(claude auth status 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write((JSON.parse(s).subscriptionType||"").toLowerCase())}catch(e){}})' 2>/dev/null || echo '')"
-case "$PLANO" in
-  pro|max|team|enterprise|"") : ;;
-  *) aviso "A sua conta Claude parece estar no plano gratuito. Para conversar com o assistente é necessário o plano Pro ou Max." ;;
-esac
-
-# ===========================================================================
-# 5) Conectar o assistente à sua memória (idempotente)
-# ===========================================================================
-titulo "5) Conectando o assistente à sua memória"
-
-# Remove uma conexão anterior (se existir) e cria de novo — assim rodar duas
-# vezes nunca duplica nem deixa configuração pela metade. A chave entra por
-# variável (não fica no histórico) e é gravada pelo próprio Claude.
-claude mcp remove "$NOME_CONEXAO" -s user >/dev/null 2>&1 || true
-# Mesma chave já cadastrada com OUTRO nome (instalação manual antiga)? Remove
-# para o assistente não ficar com a memória duplicada. Outras chaves/empresas
-# ficam intocadas.
-for VELHA in $(CHAVE="$CHAVE" NOME="$NOME_CONEXAO" node -e '
-  const fs=require("fs"),path=require("path"),h=require("os").homedir();
-  const f=path.join(process.env.CLAUDE_CONFIG_DIR||h,".claude.json");
-  try{ const j=JSON.parse(fs.readFileSync(f,"utf8"));
-    for(const [n,v] of Object.entries(j.mcpServers||{}))
-      if(n!==process.env.NOME&&/^[A-Za-z0-9_.-]+$/.test(n)&&JSON.stringify(v).includes(process.env.CHAVE)) console.log(n);
-  }catch(e){}' 2>/dev/null); do
-  claude mcp remove "$VELHA" -s user >/dev/null 2>&1 && pulou "Conexão antiga \"$VELHA\" substituída pela nova."
-done
-FRINUS_KEY_TMP="$CHAVE" claude mcp add "$NOME_CONEXAO" -s user \
-  -e FRINUS_API_KEY="$CHAVE" \
-  -- npx -y frinus-mcp@latest >/dev/null 2>&1 \
-  || parar "Não consegui conectar o assistente à sua memória." "Rode o instalador de novo. Se continuar, peça ajuda à equipe RDX."
-ok "Conexão criada."
-
-# ===========================================================================
-# 6) Instruções de partida do assistente (memória sempre ligada)
-# ===========================================================================
-titulo "6) Ligando a memória por padrão"
+# A partir daqui, tudo é LOCAL e idempotente — feito ANTES de login/conexão/teste
+# para que o comando "frinus" e o atalho existam mesmo que uma etapa de rede
+# tropece mais à frente.
+titulo "4) Ligando a memória por padrão"
 
 CFG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 mkdir -p "$CFG_DIR"
@@ -306,11 +244,12 @@ else
 fi
 
 # ===========================================================================
-# 7) Equipe de especialistas (opcional, mas recomendado)
+# 5) Equipe de especialistas + comando/atalho "frinus"
 # ===========================================================================
 # Sem estes dois arquivos, pedir ajuda a um especialista específico falha em
-# silêncio. Custo zero e idempotente, então instalamos por padrão.
-titulo "7) Preparando a equipe de especialistas"
+# silêncio. Custo zero e idempotente, então instalamos por padrão. O comando e o
+# atalho são criados aqui, antes de qualquer etapa que possa falhar.
+titulo "5) Preparando a equipe e o comando 'frinus'"
 AGENTS_DIR="$CFG_DIR/agents"
 mkdir -p "$AGENTS_DIR"
 
@@ -407,11 +346,88 @@ if [ "$(uname -s)" = "Darwin" ] && [ -d "$HOME/Desktop" ]; then
 fi
 
 # ===========================================================================
-# 8) Teste de verdade: gravar e ler uma memória
+# 6) Login na conta Claude (o único passo que só VOCÊ pode fazer)
 # ===========================================================================
-titulo "8) Testando a memória de verdade"
+titulo "6) Login na sua conta Claude"
 
-# Parte A — a conexão está viva? (o assistente enxerga a memória)
+# Atalho SÓ para testes/CI (nunca usado pelo cliente): o one-liner do cliente
+# jamais define esta variável. Ela pula o passo de login interativo — que é o
+# único passo impossível de automatizar (abre o navegador). Não mascara falha
+# real do cliente: a conexão da memória e o teste final dependem da chave do
+# Frinus, não do login do Claude.
+if [ "${FRINUS_SELFTEST_SKIP_LOGIN:-}" = "1" ]; then
+  aviso "[autoteste] Passo de login pulado (modo de verificação interna)."
+  LOGADO="sim"
+else
+LOGADO="$(claude auth status 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).loggedIn?"sim":"nao")}catch(e){process.stdout.write("nao")}})' 2>/dev/null || echo nao)"
+fi
+
+if [ "$LOGADO" = "sim" ]; then
+  pulou "Você já está logado na sua conta Claude — pulando."
+elif [ "${FRINUS_DEFER_LOGIN:-}" = "1" ]; then
+  # Instalação em lote (Windows): o login fica para o primeiro uso do assistente,
+  # que pede a conta Claude sozinho ao abrir. A memória não depende do login.
+  pulou "O login na conta Claude será pedido na primeira vez que você abrir o assistente."
+else
+  printf '%sAgora abre a etapa de login. Vai aparecer um endereço/código na tela:\n' "$DIM"
+  printf '  • copie o endereço no seu navegador (ou siga as instruções que aparecerem);\n'
+  printf '  • entre com a sua conta Claude (plano Pro ou Max);\n'
+  printf '  • quando terminar, esta janela segue sozinha.%s\n\n' "$FIM"
+  printf 'Pressione ENTER para começar o login... '
+  if { : </dev/tty; } 2>/dev/null; then read -r _ </dev/tty || true; else read -r _ || true; fi
+  { if { : </dev/tty; } 2>/dev/null; then claude auth login </dev/tty; else claude auth login; fi; } || parar "O login não foi concluído." "Rode o instalador de novo e complete o login na sua conta Claude."
+  LOGADO="$(claude auth status 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).loggedIn?"sim":"nao")}catch(e){process.stdout.write("nao")}})' 2>/dev/null || echo nao)"
+  [ "$LOGADO" = "sim" ] || parar "O login ainda não foi concluído." "Rode o instalador de novo e finalize o login na sua conta Claude."
+  ok "Login concluído."
+fi
+
+# Aviso gentil se o plano não permitir usar o assistente (não bloqueia).
+PLANO="$(claude auth status 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write((JSON.parse(s).subscriptionType||"").toLowerCase())}catch(e){}})' 2>/dev/null || echo '')"
+case "$PLANO" in
+  pro|max|team|enterprise|"") : ;;
+  *) aviso "A sua conta Claude parece estar no plano gratuito. Para conversar com o assistente é necessário o plano Pro ou Max." ;;
+esac
+
+# ===========================================================================
+# 7) Conectar o assistente à sua memória (idempotente)
+# ===========================================================================
+titulo "7) Conectando o assistente à sua memória"
+
+# Remove uma conexão anterior (se existir) e cria de novo — assim rodar duas
+# vezes nunca duplica nem deixa configuração pela metade. A chave entra por
+# variável (não fica no histórico) e é gravada pelo próprio Claude.
+claude mcp remove "$NOME_CONEXAO" -s user >/dev/null 2>&1 || true
+# Mesma chave já cadastrada com OUTRO nome (instalação manual antiga)? Remove
+# para o assistente não ficar com a memória duplicada. Outras chaves/empresas
+# ficam intocadas.
+for VELHA in $(CHAVE="$CHAVE" NOME="$NOME_CONEXAO" node -e '
+  const fs=require("fs"),path=require("path"),h=require("os").homedir();
+  const f=path.join(process.env.CLAUDE_CONFIG_DIR||h,".claude.json");
+  try{ const j=JSON.parse(fs.readFileSync(f,"utf8"));
+    for(const [n,v] of Object.entries(j.mcpServers||{}))
+      if(n!==process.env.NOME&&/^[A-Za-z0-9_.-]+$/.test(n)&&JSON.stringify(v).includes(process.env.CHAVE)) console.log(n);
+  }catch(e){}' 2>/dev/null); do
+  claude mcp remove "$VELHA" -s user >/dev/null 2>&1 && pulou "Conexão antiga \"$VELHA\" substituída pela nova."
+done
+FRINUS_KEY_TMP="$CHAVE" claude mcp add "$NOME_CONEXAO" -s user \
+  -e FRINUS_API_KEY="$CHAVE" \
+  -- npx -y frinus-mcp@latest >/dev/null 2>&1 \
+  || parar "Não consegui conectar o assistente à sua memória." "Rode o instalador de novo. Se continuar, peça ajuda à equipe RDX."
+ok "Conexão criada."
+
+# ===========================================================================
+# 8) Conferindo a memória (diagnóstico — NUNCA interrompe a instalação)
+# ===========================================================================
+titulo "8) Conferindo a memória"
+
+# A validação que de fato BLOQUEIA já aconteceu no passo 3 (a chave foi
+# reconhecida). Daqui em diante é só diagnóstico: desligamos o "parar no primeiro
+# erro" e a armadilha de erro para que nada aqui cancele uma instalação que, no
+# essencial (comando "frinus", equipe, memória ligada, conexão), já está pronta.
+trap - ERR
+set +e
+
+# Parte A — a conexão com a memória está viva?
 passo "Verificando a conexão..."
 CONECTADO="nao"
 for tentativa in 1 2 3; do
@@ -421,58 +437,67 @@ for tentativa in 1 2 3; do
   sleep 3
 done
 if [ "$CONECTADO" != "sim" ]; then
-  # Segunda chance: qualquer linha do frinus marcada como conectada.
-  claude mcp list 2>/dev/null | grep -Eiq "${NOME_CONEXAO}.*(Connected|✔)" && CONECTADO="sim" || true
+  claude mcp list 2>/dev/null | grep -Eiq "${NOME_CONEXAO}.*(Connected|✔)" && CONECTADO="sim"
 fi
-[ "$CONECTADO" = "sim" ] \
-  && ok "Conexão ativa." \
-  || parar "A conexão com a memória não respondeu a tempo." "Isso costuma resolver na segunda tentativa: rode o instalador de novo."
+if [ "$CONECTADO" = "sim" ]; then
+  ok "Conexão ativa."
+else
+  aviso "Ainda não confirmei a conexão com a memória — ela costuma ficar pronta em instantes."
+  aviso "Ao abrir o assistente pela primeira vez, a memória já deve responder normalmente."
+fi
 
-# Parte B — grava uma memória real e confirma que ela pode ser lida de volta.
-passo "Gravando uma memória de teste e lendo de volta..."
+# Parte B — tenta gravar e ler (só diagnóstico). Conta de "Consulta" não grava,
+# por desenho — isso é esperado e NÃO é erro.
+passo "Testando leitura e gravação da memória..."
 CARIMBO="INSTALACAO-$(date +%s)"
 ALVO_ID="${CEREBRO_ID:-00000000-0000-0000-0000-000000000001}"
 
 RESP_CRIA="$(mktemp)"
 COD_CRIA="$(curl -sS -o "$RESP_CRIA" -w '%{http_code}' -X POST "$MEMORY_URL/memories" \
   -H "X-API-Key: $CHAVE" -H "Content-Type: application/json" \
-  -d "{\"agent_id\":\"$ALVO_ID\",\"content\":\"$CARIMBO memoria de teste da instalacao, pode apagar\",\"memory_type\":\"episodic\",\"importance\":0.1,\"scope\":\"user\"}" 2>/dev/null || echo 000)"
-CRIA="$(cat "$RESP_CRIA" 2>/dev/null || true)"; rm -f "$RESP_CRIA"
+  -d "{\"agent_id\":\"$ALVO_ID\",\"content\":\"$CARIMBO memoria de teste da instalacao, pode apagar\",\"memory_type\":\"episodic\",\"importance\":0.1,\"scope\":\"user\"}" 2>/dev/null)"
+[ -n "$COD_CRIA" ] || COD_CRIA=000
+CRIA="$(cat "$RESP_CRIA" 2>/dev/null)"; rm -f "$RESP_CRIA"
 
-if [ "$COD_CRIA" = "401" ]; then
-  parar "A memória recusou a sua chave." "Gere uma chave nova no painel do Frinus e rode o instalador de novo."
-fi
+# Leitura: a conta ao menos CONSULTA a memória?
+COD_LER="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$MEMORY_URL/memories/search" \
+  -H "X-API-Key: $CHAVE" -H "Content-Type: application/json" \
+  -d '{"query_text":"teste de instalacao","limit":1}' 2>/dev/null)"
+[ -n "$COD_LER" ] || COD_LER=000
 
-if [ "$COD_CRIA" = "201" ] || [ "$COD_CRIA" = "200" ]; then
-  MEM_ID="$(printf '%s' "$CRIA" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).id||"")}catch(e){}})')"
-
-  ENCONTROU="$(curl -fsS -X POST "$MEMORY_URL/memories/search" \
-    -H "X-API-Key: $CHAVE" -H "Content-Type: application/json" \
-    -d "{\"query_text\":\"$CARIMBO\",\"limit\":3}" 2>/dev/null \
-    | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const a=JSON.parse(s);process.stdout.write(a.some(m=>(m.content||"").includes(process.argv[1]))?"sim":"nao")}catch(e){process.stdout.write("nao")}})' "$CARIMBO")"
-
-  # Limpa a memória de teste para não poluir a base do cliente.
-  if [ -n "$MEM_ID" ]; then
-    curl -fsS -o /dev/null -X DELETE "$MEMORY_URL/memories/$MEM_ID" -H "X-API-Key: $CHAVE" 2>/dev/null || true
-  fi
-
-  [ "$ENCONTROU" = "sim" ] \
-    && ok "Memória gravada e recuperada com sucesso." \
-    || parar "A memória foi gravada, mas não consegui confirmar a leitura." "Rode o instalador de novo. Se continuar, peça ajuda à equipe RDX."
-else
-  # Gravação não aceita (perfil "Consulta" não grava, por desenho). A instalação
-  # está completa; confirmamos que a LEITURA funciona e seguimos.
-  COD_LER="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$MEMORY_URL/memories/search" \
-    -H "X-API-Key: $CHAVE" -H "Content-Type: application/json" \
-    -d '{"query_text":"teste de instalacao","limit":1}' 2>/dev/null || echo 000)"
-  if [ "$COD_LER" = "200" ]; then
-    ok "Leitura da memória funcionando."
-    aviso "Esta conta pode CONSULTAR a memória, mas não GRAVAR (código $COD_CRIA)."
-    printf '%s\n' '  Se esta pessoa também precisa ensinar coisas ao assistente, peça à equipe RDX' '  para mudar o perfil dela para "Treinador". Não precisa reinstalar.'
-  else
-    parar "Não consegui gravar nem ler a memória de teste (códigos $COD_CRIA/$COD_LER)." "Rode o instalador de novo. Se continuar, peça ajuda à equipe RDX."
-  fi
-fi
+case "$COD_CRIA" in
+  200|201)
+    MEM_ID="$(printf '%s' "$CRIA" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).id||"")}catch(e){}})' 2>/dev/null)"
+    ENCONTROU="$(curl -fsS -X POST "$MEMORY_URL/memories/search" \
+      -H "X-API-Key: $CHAVE" -H "Content-Type: application/json" \
+      -d "{\"query_text\":\"$CARIMBO\",\"limit\":3}" 2>/dev/null \
+      | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const a=JSON.parse(s);process.stdout.write(a.some(m=>(m.content||"").includes(process.argv[1]))?"sim":"nao")}catch(e){process.stdout.write("nao")}})' "$CARIMBO" 2>/dev/null)"
+    # Limpa a memória de teste para não poluir a base do cliente.
+    if [ -n "$MEM_ID" ]; then
+      curl -fsS -o /dev/null -X DELETE "$MEMORY_URL/memories/$MEM_ID" -H "X-API-Key: $CHAVE" 2>/dev/null
+    fi
+    if [ "$ENCONTROU" = "sim" ]; then
+      ok "Memória gravada e recuperada com sucesso."
+    else
+      aviso "Gravação feita, mas ainda não confirmei a leitura — deve normalizar em instantes."
+    fi
+    ;;
+  *)
+    # Gravação não aceita. Perfil "Consulta" (consumer) não grava, por desenho —
+    # confirmamos que a LEITURA funciona e seguimos, sem reprovar a instalação.
+    if [ "$COD_LER" = "200" ]; then
+      ok "Leitura da memória funcionando."
+      aviso "Esta conta pode CONSULTAR a memória, mas não GRAVAR (perfil de Consulta)."
+      printf '%s\n' '  Se esta pessoa também precisa ensinar coisas ao assistente, peça à equipe RDX' '  para mudar o perfil dela para "Treinador". Não precisa reinstalar.'
+    elif [ "$COD_CRIA" = "401" ] || [ "$COD_LER" = "401" ]; then
+      aviso "A memória não reconheceu a chave nesta etapa de teste. O assistente foi instalado;"
+      aviso "a validação da chave no passo 3 funcionou — confirme o seu perfil com a equipe RDX."
+    else
+      aviso "Não confirmei o teste de memória agora (códigos $COD_CRIA/$COD_LER). O assistente foi"
+      aviso "instalado; a memória costuma responder normalmente ao abrir o assistente."
+    fi
+    ;;
+esac
 
 # ===========================================================================
 # Fim
@@ -485,3 +510,4 @@ printf '  2. Digite %sfrinus%s e pressione ENTER.\n' "$B" "$FIM"
 printf '  3. Peça algo e mande ele lembrar. Ex.: %s"Guarde na memória: nossa reunião semanal é toda terça às 10h."%s\n' "$DIM" "$FIM"
 printf '  4. Depois, em outra conversa, pergunte: %s"Que dia é a nossa reunião semanal?"%s\n\n' "$DIM" "$FIM"
 printf '%s%s%s\n\n' "$DIM" "Uma solução RDX." "$FIM"
+exit 0

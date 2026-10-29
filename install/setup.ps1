@@ -30,7 +30,7 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::S
 $env:WSL_UTF8 = 1
 
 # Versao publicada. Ao lancar uma nova tag, troque SO esta linha (e o README).
-$Tag        = 'client-installer-v9'
+$Tag        = 'client-installer-v10'
 $Base       = "https://raw.githubusercontent.com/frinus-ai/frinus-mcp/$Tag/install"
 $SelfUrl    = if ($env:FRINUS_SETUP_URL)   { $env:FRINUS_SETUP_URL }   else { "$Base/setup.ps1" }
 $InstallUrl = if ($env:FRINUS_INSTALL_URL) { $env:FRINUS_INSTALL_URL } else { "$Base/install.sh" }
@@ -43,7 +43,7 @@ $CopiaLocal = Join-Path $Pasta 'setup.ps1'
 $ArqChave   = Join-Path $Pasta 'chave.dat'        # protegida pelo Windows (DPAPI, so este usuario le)
 $ArqReinicio= Join-Path $Pasta 'reinicios.txt'
 $Tarefa     = 'Frinus - concluir instalacao'
-$MaxReinicios = 2
+$MaxReinicios = 3
 
 # ---------------------------------------------------------------------------
 # Mensagens
@@ -216,9 +216,67 @@ function Rodar-ComoRoot($nomeDistro, $bash) {
   } finally { Remove-Item -Force -ErrorAction SilentlyContinue $arq }
 }
 
+# Executa um comando nativo (wsl.exe, bcdedit...) de forma TOLERANTE. O PS 5.1
+# com $ErrorActionPreference='Stop' transforma QUALQUER escrita no stderr de um
+# programa externo em erro fatal (NativeCommandError), mesmo quando o programa
+# terminou bem - foi o que abortava o instalador quando o wsl.exe avisava "a
+# maquina virtual/conteiner nao esta em execucao". Aqui rodamos com 'Continue' e
+# devolvemos saida+codigo para quem chamou decidir pelo $LASTEXITCODE.
+function Invoke-Nativo([scriptblock]$Bloco) {
+  $antes = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $saida  = (& $Bloco 2>&1 | Out-String)
+    $codigo = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $antes
+  }
+  return @{ saida = $saida; codigo = $codigo }
+}
+
 function Testar-Base($nomeDistro) {
-  $out = (wsl.exe -d $nomeDistro -u root -- echo pronto) 2>&1 | Out-String
-  return @{ ok = ($LASTEXITCODE -eq 0 -and $out -match 'pronto'); saida = $out }
+  $r = Invoke-Nativo { wsl.exe -d $nomeDistro -u root -- echo pronto }
+  return @{ ok = ($r.codigo -eq 0 -and $r.saida -match 'pronto'); saida = $r.saida }
+}
+
+# Tenta DESTRAVAR o WSL quando o Ubuntu nao inicia mesmo com a virtualizacao
+# ligada na BIOS: reinicia o subsistema, liga as features do Windows e o
+# hypervisor se faltarem. Nada aqui aborta por stderr (tudo via Invoke-Nativo ou
+# try/catch). Retorna $true se alguma mudanca exige reinicio para valer.
+function Reparar-WSL {
+  $precisaReboot = $false
+
+  # 1) Reinicia o subsistema (resolve "a maquina virtual/conteiner nao esta em execucao").
+  Passo "Reiniciando o componente do Windows que roda o Ubuntu..."
+  (Invoke-Nativo { wsl.exe --shutdown }) | Out-Null
+
+  # 2) Liga as features do Windows necessarias ao WSL2, se estiverem desligadas.
+  foreach ($f in @('Microsoft-Windows-Subsystem-Linux','VirtualMachinePlatform')) {
+    $estado = $null
+    try { $estado = (Get-WindowsOptionalFeature -Online -FeatureName $f -ErrorAction Stop).State } catch { $estado = $null }
+    if ($estado -eq 'Disabled') {
+      Passo "Ligando o recurso do Windows: $f..."
+      try {
+        $res = Enable-WindowsOptionalFeature -Online -FeatureName $f -All -NoRestart -ErrorAction Stop
+        $precisaReboot = $true
+        if ($res -and $res.RestartNeeded) { $precisaReboot = $true }
+      } catch {
+        Aviso "Nao consegui ligar automaticamente o recurso $f (pode exigir Windows Update)."
+      }
+    }
+  }
+
+  # 3) Garante que o hypervisor inicia no boot (necessario para o WSL2).
+  try {
+    $bcd = (Invoke-Nativo { bcdedit.exe /enum '{current}' }).saida
+    if ("$bcd" -match 'hypervisorlaunchtype\s+Off') {
+      Passo "Ajustando o inicio da virtualizacao do Windows..."
+      (Invoke-Nativo { bcdedit.exe /set hypervisorlaunchtype Auto }) | Out-Null
+      $precisaReboot = $true
+    }
+  } catch {}
+
+  return $precisaReboot
 }
 
 function Mensagem-Virtualizacao($texto) {
@@ -281,26 +339,50 @@ if ($Chave) {
 # ---------------------------------------------------------------------------
 Titulo "2) Preparando a base do sistema (Ubuntu)"
 $nome = Obter-Distro
-$saida = @()
+$saida = ''
 if ($nome) {
   Pulou "Ubuntu ja instalado - pulando."
 } else {
   if ($Retomada) {
     Passo "Atualizando o componente do Windows que roda o Ubuntu..."
-    wsl.exe --update 2>&1 | Out-Host
+    (Invoke-Nativo { wsl.exe --update }).saida | Out-Host
   }
   Passo "Instalando o Ubuntu. Pode levar alguns minutos..."
-  wsl.exe --install -d $Distro --no-launch 2>&1 | Tee-Object -Variable saida | Out-Host
-  if ($LASTEXITCODE -ne 0 -and ("$saida" -match 'no-launch')) {
+  $r = Invoke-Nativo { wsl.exe --install -d $Distro --no-launch }
+  $saida = $r.saida; $saida | Out-Host
+  if ($r.codigo -ne 0 -and ("$saida" -match 'no-launch')) {
     # wsl.exe antigo (Windows 10 sem atualizacao) nao conhece --no-launch.
-    wsl.exe --install -d $Distro 2>&1 | Tee-Object -Variable saida | Out-Host
+    $r = Invoke-Nativo { wsl.exe --install -d $Distro }
+    $saida = $r.saida; $saida | Out-Host
   }
   $nome = Obter-Distro
+  # Virtualizacao DESLIGADA na BIOS aparece como erro do wsl.exe (0x80370102):
+  # mostramos a mensagem amigavel na hora, sem gastar reinicios a toa.
+  if (-not $nome) { Mensagem-Virtualizacao "$saida" }
 }
 
 # A base so conta como pronta se o Ubuntu de fato INICIA. Logo apos instalar,
 # o Windows normalmente ainda precisa reiniciar para ligar o recurso.
 if ($nome) { $base = Testar-Base $nome } else { $base = @{ ok = $false; saida = '' } }
+
+# Ubuntu nao respondeu? Antes de reiniciar, tenta DESTRAVAR o WSL: reinicia o
+# subsistema (resolve "a maquina virtual/conteiner nao esta em execucao"), liga
+# as features do Windows (WSL + Plataforma de Maquina Virtual) e o hypervisor se
+# faltarem. Se nada disso exigir reboot, faz uma SEGUNDA tentativa aqui mesmo,
+# antes de cair para o reinicio e, por fim, para a mensagem amigavel.
+if (-not $base.ok) {
+  Passo "O Ubuntu ainda nao respondeu. Vou preparar o Windows e tentar de novo..."
+  $precisaReboot = Reparar-WSL
+  if (-not $precisaReboot) {
+    if (-not $nome) {
+      $r = Invoke-Nativo { wsl.exe --install -d $Distro --no-launch }
+      $saida = $r.saida; $saida | Out-Host
+      $nome = Obter-Distro
+    }
+    if ($nome) { $base = Testar-Base $nome }
+  }
+}
+
 if (-not $base.ok) {
   $feitos = 0
   if (Test-Path $ArqReinicio) { try { $feitos = [int](Get-Content $ArqReinicio | Select-Object -First 1) } catch { $feitos = 0 } }
@@ -419,15 +501,27 @@ try {
 Remove-Item Env:FRINUS_API_KEY -ErrorAction SilentlyContinue
 $Chave = $null
 
-if ($falhouInstall) {
+# O essencial (o comando 'frinus') e criado DENTRO do Ubuntu antes de qualquer
+# etapa que possa falhar. Se o lancador existe, a instalacao e utilizavel mesmo
+# que o install.sh tenha terminado com um aviso (ex.: teste de memoria de uma
+# conta so-leitura, ou a conexao demorando a responder). So barramos de vez se
+# nem o lancador ficou pronto - caso contrario criamos o atalho assim mesmo.
+$chk = Invoke-Nativo { wsl.exe -d $Distro -u $Usuario --cd '~' -- bash -lic 'test -x "$HOME/.local/bin/frinus" && echo FRINUS_OK' }
+$temLancador = ("$($chk.saida)" -match 'FRINUS_OK')
+
+if ($falhouInstall -and -not $temLancador) {
   Apagar-Chave
   Parar "A instalacao do assistente nao foi concluida." `
         "Rode o instalador de novo (ele aproveita o que ja foi feito). Se a mensagem acima falar da chave, peca uma chave nova a equipe RDX."
 }
 Apagar-Chave
+if ($falhouInstall) {
+  Aviso "A instalacao terminou com um aviso, mas o essencial esta pronto (veja acima)."
+  Aviso "Vou criar o atalho assim mesmo - o comando 'frinus' ja funciona."
+}
 
 # ---------------------------------------------------------------------------
-# 5) Atalho na area de trabalho
+# 5) Atalho na area de trabalho (sempre que o lancador existir no Ubuntu)
 # ---------------------------------------------------------------------------
 if (Criar-Atalho) { Ok "Atalho 'Frinus' criado na area de trabalho." }
 else { Aviso "Nao consegui criar o atalho. Para abrir: menu Iniciar > Ubuntu > digite frinus." }
