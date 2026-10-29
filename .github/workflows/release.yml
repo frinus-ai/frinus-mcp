@@ -59,10 +59,37 @@ jobs:
       - name: Pack .mcpb bundle
         run: npm run pack:mcpb
 
-      - name: Create GitHub Release with .mcpb
+      # Toda release do MCP TEM de carregar o instalador cliente. O guia PDF usa
+      #   https://github.com/frinus-ai/frinus-mcp/releases/latest/download/Instalar-Frinus.cmd
+      # que baixa o .cmd da release "Latest". O instalador vive nas tags
+      # client-installer-v* (nao em main), entao buscamos o .cmd da tag
+      # client-installer mais recente. O job FALHA se o .cmd nao vier.
+      - name: Fetch current Frinus client installer (.cmd)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG=$(gh api --paginate "repos/${{ github.repository }}/tags" --jq '.[].name' \
+                | grep -E '^client-installer-v[0-9]+$' | sort -V | tail -1)
+          if [ -z "${TAG:-}" ]; then
+            echo "::error::Nenhuma tag client-installer-v* encontrada; instalador cliente ausente."
+            exit 1
+          fi
+          echo "Instalador cliente vigente: $TAG"
+          curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/$TAG/install/Instalar-Frinus.cmd" -o Instalar-Frinus.cmd
+          test -s Instalar-Frinus.cmd
+          grep -q 'setup.ps1' Instalar-Frinus.cmd
+          echo "OK: Instalar-Frinus.cmd ($(wc -c < Instalar-Frinus.cmd) bytes) de $TAG"
+
+      - name: Create GitHub Release with .mcpb + installer
         uses: softprops/action-gh-release@v2
         with:
-          files: frinus.mcpb
+          # fail_on_unmatched_files faz o job FALHAR se qualquer item nao existir
+          # (ex.: Instalar-Frinus.cmd ausente) — garante que nenhuma release do
+          # MCP seja publicada sem o instalador cliente.
+          files: |
+            frinus.mcpb
+            Instalar-Frinus.cmd
           generate_release_notes: true
           fail_on_unmatched_files: true
         env:
