@@ -59,7 +59,7 @@ trap 'parar "Algo não saiu como esperado durante a instalação." "Tente rodar 
 # ---------------------------------------------------------------------------
 CP_URL="${FRINUS_CP_URL:-https://frinus-api.rdxsec.com.br}"
 MEMORY_URL="${MEMORY_SERVICE_URL:-https://frinus-memory.rdxsec.com.br}"
-ICONE_URL="https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v11/install/frinus.ico"
+ICONE_URL="https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v12/install/frinus.ico"
 NOME_CONEXAO="frinus-mcp"   # nome interno da conexão (mantém tudo consistente)
 
 titulo "Frinus — vamos dar memória ao seu assistente"

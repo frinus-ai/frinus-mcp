@@ -10,6 +10,7 @@ PT-BR, sem termos técnicos.
 | Arquivo | Onde roda | Papel |
 |--------|-----------|-------|
 | [`Instalar-Frinus.cmd`](Instalar-Frinus.cmd) | Windows (duplo clique) | Atalho de 1 clique: só chama o `setup.ps1` da tag publicada. É o arquivo que se distribui (pendrive, pasta de rede, e-mail). |
+| [`Corrigir-Atalho-Frinus.cmd`](Corrigir-Atalho-Frinus.cmd) | Windows (duplo clique) | Para máquina **já instalada**: substitui o atalho "Frinus" (logo) e atualiza o assistente no Ubuntu (sem pedidos de permissão). Sem chave, sem admin. Anexado à release `client-installer-v12`. |
 | [`frinus.ico`](frinus.ico) | Windows | Ícone do atalho "Frinus" (gerado de `frontend/public/logo.svg`, 16–256 px). Se o download falhar, o atalho usa o ícone do WSL. |
 | [`setup.ps1`](setup.ps1) | Windows (PowerShell) | Pede admin sozinho, pede a chave, instala o WSL2/Ubuntu, **reinicia e continua sozinho**, cria usuário/senha do Ubuntu, roda o instalador lá dentro e cria o atalho "Frinus" na área de trabalho. |
 | [`install.sh`](install.sh) | Dentro do WSL2, ou Linux/macOS direto | Instala o que faltar, conecta a memória e valida com um teste real. |
@@ -22,7 +23,7 @@ oficial leva o cliente para dentro do WSL2, onde funciona como no Linux.
 **Windows** — dê **duplo clique** em `Instalar-Frinus.cmd`. Ou, num PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v11/install/setup.ps1 | iex
+irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v12/install/setup.ps1 | iex
 ```
 
 Quem instala só faz isto:
@@ -43,10 +44,10 @@ de novo.
 **Linux / macOS** (ou dentro do Ubuntu, se preferir manual):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v11/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v12/install/install.sh | bash
 ```
 
-Os endereços apontam para a **tag imutável** `client-installer-v11` — ver
+Os endereços apontam para a **tag imutável** `client-installer-v12` — ver
 "Versionamento" abaixo.
 
 ## O que o cliente precisa ter em mãos
@@ -62,16 +63,17 @@ Os endereços apontam para a **tag imutável** `client-installer-v11` — ver
 executar, os hashes SHA-256 dos scripts desta release são:
 
 ```
-install.sh            139e2f768b96f919d6491bda00b2b4743f4dfe3ac64c80a05d31dd0bf83bd4ee
-setup.ps1             9a0701dfd1f688f670712e041f3344e62f0c327a7b53045f8115bb05dad69e4f
-Instalar-Frinus.cmd   7970afcc7fa089b466a627c593385a9ff60d89c3fe80a21faeba25e7540f03b1
+install.sh            9529801440be47e76335213ed8888141e5f21bc80bb56ebc4c8ca07459ee524c
+setup.ps1             ef9d2d1a05597f7aea8568616e53d50033b510bd99667fb10137c1ddde1754d4
+Instalar-Frinus.cmd   a5206bb09519f6a3f98abc2509385c213e77bd50ed2fc8f937954ed079515153
+Corrigir-Atalho-Frinus.cmd  7a4299b4294f533c906000aa50412ee107f61fdcb94e8349cb460f7a31a5e8b3
 frinus.ico            d5ad20d853234a77df9d4e667e6eec53b0cd97933d2a937eaff7573d5effa8b6
 ```
 
 Conferir no Linux/macOS antes de rodar:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v11/install/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v12/install/install.sh -o install.sh
 sha256sum install.sh   # deve bater com o hash acima
 less install.sh        # revise, depois: bash install.sh
 ```
@@ -79,7 +81,7 @@ less install.sh        # revise, depois: bash install.sh
 Conferir no Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v11/install/setup.ps1 -OutFile setup.ps1
+irm https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v12/install/setup.ps1 -OutFile setup.ps1
 Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
 ```
 
@@ -100,6 +102,20 @@ Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
 - **Descobre a empresa pela chave**: consulta `GET /api/v1/templates/mcp-config`
   (autenticado só pela chave) e monta as instruções de partida com o assistente
   principal correto da organização — nada é fixado no código.
+
+## Novidades da v12
+
+- **Atalho do Windows com a logo do Frinus, de verdade.** Até a v11 o ícone era
+  *baixado* na hora de criar o atalho; se o download falhasse (proxy, antivírus,
+  rede da empresa), o atalho caía em silêncio no ícone do WSL. Agora a logo vem
+  **embutida no `setup.ps1`** (base64 do `frinus.ico` sem a camada de 128 px) e é
+  gravada em `%LOCALAPPDATA%\Frinus\frinus-<hash>.ico` — o download virou só reserva.
+- **Atalho conferido depois de salvo** (relê o `IconLocation`) e **log** de cada etapa
+  em `%LOCALAPPDATA%\Frinus\atalho.log`.
+- **`Corrigir-Atalho-Frinus.cmd`** (modo `FRINUS_SO_ATALHO=1`) para quem **já tem** o
+  Frinus: acrescenta `--dangerously-skip-permissions` ao `~/.local/bin/frinus` de cada
+  usuário do Ubuntu, grava `skipDangerousModePermissionPrompt` no `settings.json` e
+  **substitui** o atalho pela versão com a logo. Idempotente; sem chave e sem admin.
 
 ## Novidades da v11
 
@@ -131,32 +147,32 @@ Get-FileHash setup.ps1 -Algorithm SHA256   # compare com o hash acima
 
 ## Versionamento (para mantenedores)
 
-Os one-liners apontam para a **tag** `client-installer-v11`, não para `main`.
+Os one-liners apontam para a **tag** `client-installer-v12`, não para `main`.
 Motivo: `main` é mutável — qualquer commit no repo mudaria o que os clientes já
 distribuídos executam. Uma tag é imutável e intencional: o cliente sempre roda
 exatamente o que foi revisado naquela release.
 
-> **Compatibilidade com `.cmd` antigos (v1–v10).** Um `Instalar-Frinus.cmd` já
+> **Compatibilidade com `.cmd` antigos (v1–v11).** Um `Instalar-Frinus.cmd` já
 > distribuído aponta para `raw.githubusercontent.com/.../client-installer-vN/install/setup.ps1`.
-> Para que essas cópias antigas rodem a v11, as tags `client-installer-v1..v10`
-> foram **movidas (force) para o commit da v11** — toda tag antiga passa a servir
-> os scripts da v11. Ao publicar uma versão nova, mova de novo as tags antigas
+> Para que essas cópias antigas rodem a v12, as tags `client-installer-v1..v11`
+> foram **movidas (force) para o commit da v12** — toda tag antiga passa a servir
+> os scripts da v12. Ao publicar uma versão nova, mova de novo as tags antigas
 > para o commit novo (ou mantenha esse procedimento no `publicar-release-mcp`).
 
 Para publicar/atualizar:
 
 ```bash
 # na branch com estes arquivos, após revisar:
-git tag client-installer-v11        # a cada nova release do instalador
+git tag client-installer-v12        # a cada nova release do instalador
 git push origin feat/client-installer --tags
 
-# mover as tags antigas para o commit da v11 (cópias antigas rodam a v11):
-NEW=$(git rev-parse client-installer-v11)
-for n in $(seq 1 10); do git tag -f client-installer-v$n "$NEW"; done
-git push origin --force $(for n in $(seq 1 10); do echo client-installer-v$n; done)
+# mover as tags antigas para o commit da v12 (cópias antigas rodam a v12):
+NEW=$(git rev-parse client-installer-v12)
+for n in $(seq 1 11); do git tag -f client-installer-v$n "$NEW"; done
+git push origin --force $(for n in $(seq 1 11); do echo client-installer-v$n; done)
 
 # ao mudar os scripts: recalcule os hashes e atualize o bloco SHA-256 acima
-sha256sum install/install.sh install/setup.ps1 install/Instalar-Frinus.cmd install/frinus.ico
+sha256sum install/install.sh install/setup.ps1 install/Instalar-Frinus.cmd install/Corrigir-Atalho-Frinus.cmd install/frinus.ico
 ```
 
 Para trocar a versão que os clientes usam, atualize o número da tag nos one-liners
