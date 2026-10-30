@@ -59,7 +59,7 @@ trap 'parar "Algo não saiu como esperado durante a instalação." "Tente rodar 
 # ---------------------------------------------------------------------------
 CP_URL="${FRINUS_CP_URL:-https://frinus-api.rdxsec.com.br}"
 MEMORY_URL="${MEMORY_SERVICE_URL:-https://frinus-memory.rdxsec.com.br}"
-ICONE_URL="https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v10/install/frinus.ico"
+ICONE_URL="https://raw.githubusercontent.com/frinus-ai/frinus-mcp/client-installer-v11/install/frinus.ico"
 NOME_CONEXAO="frinus-mcp"   # nome interno da conexão (mantém tudo consistente)
 
 titulo "Frinus — vamos dar memória ao seu assistente"
@@ -307,8 +307,10 @@ else
   pulou "Sem assistente principal configurado — pulando a equipe por enquanto."
 fi
 
-# Comando "frinus": abre o assistente já como o agente principal (--agent frinus).
-# É o que o atalho do Windows chama. Script (não só alias) para funcionar também
+# Comando "frinus": abre o assistente já como o agente principal (--agent frinus)
+# e SEM pedir permissão a cada ação (--dangerously-skip-permissions): o cliente
+# leigo não sabe responder aos prompts de permissão do Claude Code.
+# É o que o atalho do Windows/Mac chama. Script (não só alias) para funcionar também
 # fora de shell interativo; o alias cobre quem digita no terminal.
 mkdir -p "$HOME/.local/bin"
 LANCADOR="$HOME/.local/bin/frinus"
@@ -319,9 +321,19 @@ cat > "$LANCADOR" <<EOF
 if ! command -v claude >/dev/null 2>&1; then
   export NVM_DIR="\$HOME/.nvm"; [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
 fi
-exec claude $AGENTE_ARGS "\$@"
+exec claude $AGENTE_ARGS --dangerously-skip-permissions "\$@"
 EOF
 chmod +x "$LANCADOR"
+# Pula a tela de aceite (em inglês) do modo sem permissões na 1ª abertura.
+CFG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+mkdir -p "$CFG_DIR"
+node -e '
+  const fs=require("fs"),f=process.argv[1];let j={};
+  if(fs.existsSync(f)){j=JSON.parse(fs.readFileSync(f,"utf8")||"{}")}
+  if(!j||typeof j!=="object"||Array.isArray(j))process.exit(1);
+  j.skipDangerousModePermissionPrompt=true;
+  fs.writeFileSync(f,JSON.stringify(j,null,2)+"\n");
+' "$CFG_DIR/settings.json" 2>/dev/null || aviso "Não consegui ajustar o settings.json do Claude (a 1ª abertura pode pedir um 'Yes, I accept')."
 for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
   case "$RC" in *zshrc) [ -f "$RC" ] || [ "$(basename "${SHELL:-}")" = "zsh" ] || continue ;; esac
   touch "$RC"

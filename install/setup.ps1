@@ -30,7 +30,7 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::S
 $env:WSL_UTF8 = 1
 
 # Versao publicada. Ao lancar uma nova tag, troque SO esta linha (e o README).
-$Tag        = 'client-installer-v10'
+$Tag        = 'client-installer-v11'
 $Base       = "https://raw.githubusercontent.com/frinus-ai/frinus-mcp/$Tag/install"
 $SelfUrl    = if ($env:FRINUS_SETUP_URL)   { $env:FRINUS_SETUP_URL }   else { "$Base/setup.ps1" }
 $InstallUrl = if ($env:FRINUS_INSTALL_URL) { $env:FRINUS_INSTALL_URL } else { "$Base/install.sh" }
@@ -155,7 +155,7 @@ function Criar-Atalho {
     $sh  = New-Object -ComObject WScript.Shell
     $lnk = $sh.CreateShortcut($arq)
     $lnk.TargetPath       = $wsl
-    # 'frinus' = lancador criado pelo install.sh: claude --agent frinus
+    # 'frinus' = lancador criado pelo install.sh: claude --agent frinus --dangerously-skip-permissions
     $lnk.Arguments        = "-d $Distro --cd ~ -- bash -lic ~/.local/bin/frinus"
     $lnk.WorkingDirectory = $env:USERPROFILE
     # Logo do Frinus. Nome com a versao: caminho novo = icone novo no cache.
