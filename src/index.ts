@@ -222,8 +222,8 @@ async function main() {
     // so the model cannot miss it. Repeats on every call until agent_reorient
     // resets the counter. Never throws into the response path.
     try {
-      noteToolCall(name);
-      const banner = reorientBanner();
+      noteToolCall(name, args as Record<string, unknown>);
+      const banner = reorientBanner(args as Record<string, unknown>);
       if (banner) {
         const last = toolResult.content?.[toolResult.content.length - 1];
         if (last && last.type === "text") {

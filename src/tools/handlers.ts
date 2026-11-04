@@ -1105,8 +1105,12 @@ const handlers: Record<string, HandlerFn> = {
         parent_session_id: args.parent_session_id as string,
       });
 
-      // Replace auto-generated session ID with the formal one
-      capture.sessionId = result.session_id;
+      // Replace the auto-generated capture session with the formal one — unless
+      // agent_bootstrap already owns the process session. The MCP process is
+      // shared by the main session and its subagents; a specialist calling
+      // session_start must not re-route everyone's stream capture to its own
+      // session (and the exit hook only closes the bootstrap session anyway).
+      if (!getSessionId()) capture.sessionId = result.session_id;
 
       // P1 BOOT auto-populate: seed working memory with the session id and
       // agent role so subsequent `working_memory_get(agent:<id>)` calls
@@ -2035,7 +2039,7 @@ const handlers: Record<string, HandlerFn> = {
       // Deterministic cadence: reorienting clears the "reorient due" counter so
       // the auto-appended banner stops until the next N tool calls elapse. Done
       // regardless of what the server returns.
-      resetReorientCounter();
+      resetReorientCounter(args.agent_id as string);
 
       const identity = result.identity || {};
 

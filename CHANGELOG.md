@@ -3,6 +3,22 @@
 All notable changes to the Frinus MCP server. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [3.10.1] - 2026-11-04
+
+### Fixed
+- **Reorient cadence and session are now tracked per agent.** One MCP process is
+  shared by the main Claude Code session and every subagent it spawns. The
+  process-wide `bootAgentId`/counter let the last specialist to call
+  `agent_bootstrap` take over the "REORIENT DEVIDO" banner, so the main session
+  and the other specialists were told to reorient with someone else's id.
+  Now: each booted agent has its own counter and config; the first boot stays
+  the primary agent and owns the process session; a call counts for the
+  `agent_id` it carries (when booted), otherwise for the primary; the banner
+  only names an id when the caller is certain, else asks for "your own
+  agent_id"; `agent_reorient` resets only the agent that reoriented.
+- **`session_start` no longer hijacks the bootstrap session.** A specialist
+  calling it no longer re-routes everyone's stream capture to its own session.
+
 ## [3.10.0] - 2026-10-28
 
 ### Added
