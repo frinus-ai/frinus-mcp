@@ -51,7 +51,9 @@ $Tarefa     = 'Frinus - concluir instalacao'
 # Modo Frinus Office (Instalar-Frinus-Office.cmd define FRINUS_PRODUCT=office). Gravado em arquivo porque a
 # elevacao (UAC) e a retomada depois do reinicio NAO herdam variaveis de ambiente.
 $ArqProduto = Join-Path $Pasta 'produto.txt'
-$OfficeInstallUrl = 'https://github.com/frinus-ai/frinus-office/releases/latest/download/install.sh'
+$OfficeInstallUrl = 'https://github.com/frinus-ai/frinus-cortex/releases/latest/download/install.sh'
+# Nome do atalho com acento montado por codigo (o arquivo e ASCII; evita problema de codepage).
+$CortexNome = 'Frinus C' + [char]0x00F3 + 'rtex'
 $OfficeVbs  = Join-Path $Pasta 'FrinusOffice.vbs'
 $OfficePorta = 4748
 $MaxReinicios = 3
@@ -279,7 +281,7 @@ function Criar-Atalho {
 function Criar-Atalho-Office($usuario) {
   try {
     $vbs = @"
-' Frinus Office - sobe o escritorio no Ubuntu (WSL), escondido, e abre no navegador.
+' Frinus Cortex - sobe o Cortex no Ubuntu (WSL), escondido, e abre no navegador.
 ' Gerado pelo instalador do Frinus. Argumento /fundo: so sobe, sem abrir o navegador.
 Option Explicit
 Dim sh, i, abrir
@@ -317,9 +319,13 @@ End Function
     $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
     $sh = New-Object -ComObject WScript.Shell
     $destinos = @(
-      @{ arq = (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Frinus Office.lnk'); args = "`"$OfficeVbs`"" },
-      @{ arq = (Join-Path ([Environment]::GetFolderPath('Startup')) 'Frinus Office.lnk'); args = "`"$OfficeVbs`" /fundo" }
+      @{ arq = (Join-Path ([Environment]::GetFolderPath('Desktop')) "$CortexNome.lnk"); args = "`"$OfficeVbs`"" },
+      @{ arq = (Join-Path ([Environment]::GetFolderPath('Startup')) "$CortexNome.lnk"); args = "`"$OfficeVbs`" /fundo" }
     )
+    # Atalhos antigos (antes do rename para Frinus Cortex): remove para nao duplicar.
+    foreach ($velho in @((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Frinus Office.lnk'), (Join-Path ([Environment]::GetFolderPath('Startup')) 'Frinus Office.lnk'))) {
+      if (Test-Path $velho) { Remove-Item $velho -Force -ErrorAction SilentlyContinue }
+    }
     foreach ($d in $destinos) {
       if (Test-Path $d.arq) { Remove-Item $d.arq -Force -ErrorAction SilentlyContinue }
       $lnk = $sh.CreateShortcut($d.arq)
@@ -327,7 +333,7 @@ End Function
       $lnk.Arguments        = $d.args
       $lnk.WorkingDirectory = $env:USERPROFILE
       if ((Test-Path $ico) -and ((Get-Item $ico).Length -gt 1000)) { $lnk.IconLocation = "$ico,0" }
-      $lnk.Description      = 'Frinus Office - escritorio visual do Frinus'
+      $lnk.Description      = "$CortexNome - seus agentes do Frinus ao vivo"
       $lnk.Save()
     }
     return $true
@@ -475,7 +481,7 @@ Garantir-CopiaLocal
 if ($env:FRINUS_PRODUCT -eq 'office') { Gravar-Utf8 $ArqProduto 'office' $false }
 $Office = (Test-Path $ArqProduto) -and ((Get-Content -Path $ArqProduto -Raw).Trim() -eq 'office')
 if ($Office -and -not $env:FRINUS_INSTALL_URL) { $InstallUrl = $OfficeInstallUrl }
-if ($Office) { Write-Host "Inclui o Frinus Office (escritorio visual no navegador)." -ForegroundColor DarkGray }
+if ($Office) { Write-Host "Inclui o $CortexNome (seus agentes ao vivo no navegador)." -ForegroundColor DarkGray }
 
 # ---------------------------------------------------------------------------
 # 0) Permissao de administrador (pede sozinho; a pessoa so clica em "Sim")
@@ -713,12 +719,12 @@ if ($Office) {
   $chkO = Invoke-Nativo { wsl.exe -d $Distro -u $Usuario --cd '~' -- bash -lc 'test -x "$HOME/.local/share/frinus-office/frinus/bin/frinus-office-wsl" && echo OFFICE_OK' }
   if ("$($chkO.saida)" -match 'OFFICE_OK') {
     if (Criar-Atalho-Office $Usuario) {
-      Ok "Atalho 'Frinus Office' criado na area de trabalho (e ele abre sozinho quando voce liga o computador)."
+      Ok "Atalho '$CortexNome' criado na area de trabalho (e ele abre sozinho quando voce liga o computador)."
       $officeOk = $true
       try { Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\wscript.exe') -ArgumentList "`"$OfficeVbs`"" } catch {}
-    } else { Aviso "Nao consegui criar o atalho do Frinus Office." }
+    } else { Aviso "Nao consegui criar o atalho do $CortexNome." }
   } else {
-    Aviso "O Frinus Office nao ficou instalado (veja as mensagens acima). O Frinus no terminal ja funciona; rode o instalador de novo para tentar o Office."
+    Aviso "O $CortexNome nao ficou instalado (veja as mensagens acima). O Frinus no terminal ja funciona; rode o instalador de novo para tentar."
   }
   Remove-Item -Force -ErrorAction SilentlyContinue $ArqProduto
 }
@@ -726,7 +732,7 @@ if ($Office) {
 Titulo "Instalacao concluida!"
 Write-Host ""
 if ($officeOk) {
-  Write-Host "Para usar: clique duas vezes no atalho 'Frinus Office' na area de trabalho (abre no navegador)." -ForegroundColor White
+  Write-Host "Para usar: clique duas vezes no atalho '$CortexNome' na area de trabalho (abre no navegador)." -ForegroundColor White
   Write-Host "Prefere o terminal? Use o atalho 'Frinus'." -ForegroundColor White
 } else {
   Write-Host "Para usar: clique duas vezes no atalho 'Frinus' na area de trabalho." -ForegroundColor White
