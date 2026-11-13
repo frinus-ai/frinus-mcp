@@ -35,7 +35,7 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::S
 $env:WSL_UTF8 = 1
 
 # Versao publicada. Ao lancar uma nova tag, troque SO esta linha (e o README).
-$Tag        = 'client-installer-v12'
+$Tag        = 'client-installer-v13'
 $Base       = "https://raw.githubusercontent.com/frinus-ai/frinus-mcp/$Tag/install"
 $SelfUrl    = if ($env:FRINUS_SETUP_URL)   { $env:FRINUS_SETUP_URL }   else { "$Base/setup.ps1" }
 $InstallUrl = if ($env:FRINUS_INSTALL_URL) { $env:FRINUS_INSTALL_URL } else { "$Base/install.sh" }
@@ -48,6 +48,12 @@ $CopiaLocal = Join-Path $Pasta 'setup.ps1'
 $ArqChave   = Join-Path $Pasta 'chave.dat'        # protegida pelo Windows (DPAPI, so este usuario le)
 $ArqReinicio= Join-Path $Pasta 'reinicios.txt'
 $Tarefa     = 'Frinus - concluir instalacao'
+# Modo Frinus Office (Instalar-Frinus-Office.cmd define FRINUS_PRODUCT=office). Gravado em arquivo porque a
+# elevacao (UAC) e a retomada depois do reinicio NAO herdam variaveis de ambiente.
+$ArqProduto = Join-Path $Pasta 'produto.txt'
+$OfficeInstallUrl = 'https://github.com/frinus-ai/frinus-office/releases/latest/download/install.sh'
+$OfficeVbs  = Join-Path $Pasta 'FrinusOffice.vbs'
+$OfficePorta = 4748
 $MaxReinicios = 3
 
 # ---------------------------------------------------------------------------
@@ -267,6 +273,67 @@ function Criar-Atalho {
   }
 }
 
+# Frinus Office no Windows: o escritorio roda DENTRO do Ubuntu, mas o WSL desliga quando nenhum programa do
+# Windows o usa. Um .vbs (janela escondida) deixa um wsl.exe rodando o frinus-office-wsl enquanto o escritorio
+# estiver no ar e abre o navegador. Atalho na area de trabalho + entrada em Inicializar (/fundo: so sobe).
+function Criar-Atalho-Office($usuario) {
+  try {
+    $vbs = @"
+' Frinus Office - sobe o escritorio no Ubuntu (WSL), escondido, e abre no navegador.
+' Gerado pelo instalador do Frinus. Argumento /fundo: so sobe, sem abrir o navegador.
+Option Explicit
+Dim sh, i, abrir
+Set sh = CreateObject("WScript.Shell")
+abrir = True
+If WScript.Arguments.Count > 0 Then
+  If LCase(WScript.Arguments(0)) = "/fundo" Then abrir = False
+End If
+If Not Responde() Then
+  sh.Run "wsl.exe -d $Distro -u $usuario --cd ~ -- bash -lc ""`$HOME/.local/share/frinus-office/frinus/bin/frinus-office-wsl""", 0, False
+  For i = 1 To 90
+    WScript.Sleep 500
+    If Responde() Then Exit For
+  Next
+End If
+If abrir Then sh.Run "http://127.0.0.1:$OfficePorta", 1, False
+
+Function Responde()
+  Dim h
+  Responde = False
+  On Error Resume Next
+  Set h = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+  h.setTimeouts 1000, 1000, 1000, 1000
+  h.Open "GET", "http://127.0.0.1:$OfficePorta/api/health", False
+  h.Send
+  If Err.Number = 0 Then Responde = (h.Status = 200)
+  On Error GoTo 0
+End Function
+"@
+    Gravar-Utf8 $OfficeVbs $vbs $false
+    $ico = Join-Path $Pasta "frinus-$Tag.ico"
+    if (-not ((Test-Path $ico) -and ((Get-Item $ico).Length -gt 1000))) {
+      try { Invoke-WebRequest -Uri "$Base/frinus.ico" -OutFile $ico -UseBasicParsing -TimeoutSec 60 } catch {}
+    }
+    $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    $sh = New-Object -ComObject WScript.Shell
+    $destinos = @(
+      @{ arq = (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Frinus Office.lnk'); args = "`"$OfficeVbs`"" },
+      @{ arq = (Join-Path ([Environment]::GetFolderPath('Startup')) 'Frinus Office.lnk'); args = "`"$OfficeVbs`" /fundo" }
+    )
+    foreach ($d in $destinos) {
+      if (Test-Path $d.arq) { Remove-Item $d.arq -Force -ErrorAction SilentlyContinue }
+      $lnk = $sh.CreateShortcut($d.arq)
+      $lnk.TargetPath       = $wscript
+      $lnk.Arguments        = $d.args
+      $lnk.WorkingDirectory = $env:USERPROFILE
+      if ((Test-Path $ico) -and ((Get-Item $ico).Length -gt 1000)) { $lnk.IconLocation = "$ico,0" }
+      $lnk.Description      = 'Frinus Office - escritorio visual do Frinus'
+      $lnk.Save()
+    }
+    return $true
+  } catch { return $false }
+}
+
 function Esperar-Internet {
   for ($i = 0; $i -lt 24; $i++) {
     try { Invoke-WebRequest -Uri 'https://raw.githubusercontent.com' -Method Head -UseBasicParsing -TimeoutSec 10 | Out-Null; return } catch {}
@@ -405,6 +472,11 @@ else { Write-Host "Voce so vai digitar a sua chave do Frinus e criar um usuario 
 
 Garantir-CopiaLocal
 
+if ($env:FRINUS_PRODUCT -eq 'office') { Gravar-Utf8 $ArqProduto 'office' $false }
+$Office = (Test-Path $ArqProduto) -and ((Get-Content -Path $ArqProduto -Raw).Trim() -eq 'office')
+if ($Office -and -not $env:FRINUS_INSTALL_URL) { $InstallUrl = $OfficeInstallUrl }
+if ($Office) { Write-Host "Inclui o Frinus Office (escritorio visual no navegador)." -ForegroundColor DarkGray }
+
 # ---------------------------------------------------------------------------
 # 0) Permissao de administrador (pede sozinho; a pessoa so clica em "Sim")
 # ---------------------------------------------------------------------------
@@ -429,7 +501,7 @@ if ($Chave) {
   Pulou "Chave ja informada antes do reinicio - usando a mesma."
 } else {
   for ($tentativa = 1; $tentativa -le 3; $tentativa++) {
-    Write-Host "Cole a chave que a equipe RDX te enviou (comeca com sk-frinus-) e aperte ENTER." -ForegroundColor DarkGray
+    Write-Host "Cole a sua chave do Frinus (gerada no painel, comeca com sk-frinus-) e aperte ENTER." -ForegroundColor DarkGray
     Write-Host "Ela aparece como asteriscos (*) - e normal, e por seguranca." -ForegroundColor DarkGray
     $k = (Texto (Read-Host -AsSecureString "Chave")) -replace '\s', ''
     if ($k -notlike 'sk-frinus-*') { Aviso "Essa nao parece uma chave do Frinus (deve comecar com sk-frinus-). Tente de novo."; continue }
@@ -636,9 +708,29 @@ if ($falhouInstall) {
 if (Criar-Atalho) { Ok "Atalho 'Frinus' criado na area de trabalho." }
 else { Aviso "Nao consegui criar o atalho. Para abrir: menu Iniciar > Ubuntu > digite frinus." }
 
+$officeOk = $false
+if ($Office) {
+  $chkO = Invoke-Nativo { wsl.exe -d $Distro -u $Usuario --cd '~' -- bash -lc 'test -x "$HOME/.local/share/frinus-office/frinus/bin/frinus-office-wsl" && echo OFFICE_OK' }
+  if ("$($chkO.saida)" -match 'OFFICE_OK') {
+    if (Criar-Atalho-Office $Usuario) {
+      Ok "Atalho 'Frinus Office' criado na area de trabalho (e ele abre sozinho quando voce liga o computador)."
+      $officeOk = $true
+      try { Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\wscript.exe') -ArgumentList "`"$OfficeVbs`"" } catch {}
+    } else { Aviso "Nao consegui criar o atalho do Frinus Office." }
+  } else {
+    Aviso "O Frinus Office nao ficou instalado (veja as mensagens acima). O Frinus no terminal ja funciona; rode o instalador de novo para tentar o Office."
+  }
+  Remove-Item -Force -ErrorAction SilentlyContinue $ArqProduto
+}
+
 Titulo "Instalacao concluida!"
 Write-Host ""
-Write-Host "Para usar: clique duas vezes no atalho 'Frinus' na area de trabalho." -ForegroundColor White
+if ($officeOk) {
+  Write-Host "Para usar: clique duas vezes no atalho 'Frinus Office' na area de trabalho (abre no navegador)." -ForegroundColor White
+  Write-Host "Prefere o terminal? Use o atalho 'Frinus'." -ForegroundColor White
+} else {
+  Write-Host "Para usar: clique duas vezes no atalho 'Frinus' na area de trabalho." -ForegroundColor White
+}
 Write-Host "Na PRIMEIRA vez ele pede para entrar na sua conta Claude (abre o navegador)." -ForegroundColor White
 Write-Host "Depois disso e so conversar." -ForegroundColor White
 Write-Host ""
