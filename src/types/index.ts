@@ -208,6 +208,20 @@ export interface SleepWorkSubmitResponse {
   summary?: { applied?: number; verified?: number; queued?: number; rejected?: number };
 }
 
+/**
+ * Shape returned by `POST /agents/{id}/reorient` (Memory Engine). Loosely typed
+ * to match the rest of this file, but the `delegation` field is pinned: PR #132
+ * (frinus-backend) added it so the orchestrator's delegation rulebook survives a
+ * Claude Code context COMPACTION — which discards tool results, including the
+ * bootstrap output where the rule used to live exclusively. The reorient TEXT
+ * does survive, so the block must be rendered there. `null`/absent for
+ * specialists, who do not delegate.
+ */
+export interface AgentReorientResult {
+  delegation?: string | null;
+  [key: string]: unknown;
+}
+
 /** Public surface of the MemoryClient used by handlers. */
 export interface MemoryClientInterface {
   getTenantOrgId(): string | null;

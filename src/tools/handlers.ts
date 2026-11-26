@@ -7,7 +7,7 @@
 import axios from "axios";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import type { ToolResult, ToolArgs, ToolHandlerDeps } from "../types/index.js";
+import type { ToolResult, ToolArgs, ToolHandlerDeps, AgentReorientResult } from "../types/index.js";
 import { getResolvedTenantOrgId } from "../client/memory-client.js";
 import { fetchNotificationsBlock } from "../notifications.js";
 import { fetchSleepWorkBlock } from "../sleep-work.js";
@@ -2051,6 +2051,16 @@ const handlers: Record<string, HandlerFn> = {
       if (identity.role || identity.specialization) formatted += `Role: ${identity.role || identity.specialization}\n`;
       if (result.persona_version !== undefined) formatted += `Persona Version: ${result.persona_version}\n`;
       formatted += `\n`;
+
+      // Delegation rulebook (PR #132, frinus-backend): rendered right after
+      // Identity so it rides the reorient text — the one surface that survives a
+      // Claude Code context compaction. Without this the orchestrator reverts to
+      // delegating to `general-purpose` post-compaction. `null`/empty for
+      // specialists (who do not delegate): omit the block entirely.
+      const delegation = (result as AgentReorientResult).delegation;
+      if (typeof delegation === "string" && delegation.trim().length > 0) {
+        formatted += `## Delegation\n${delegation.trim()}\n\n`;
+      }
 
       const workingMemory = result.working_memory || [];
       if (workingMemory.length > 0) {
